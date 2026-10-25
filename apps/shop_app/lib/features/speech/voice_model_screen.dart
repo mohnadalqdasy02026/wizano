@@ -1,0 +1,146 @@
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../app/theme.dart';
+import 'speech_engine.dart';
+import 'speech_controller.dart';
+
+/// شاشة تنزيل نموذج التعرف على الكلام المحلي (S14).
+/// النموذج يُنزَّل مرة واحدة، ثم يعمل التطبيق دون اتصال تمامًا.
+class VoiceModelScreen extends StatefulWidget {
+  const VoiceModelScreen({super.key});
+
+  @override
+  State<VoiceModelScreen> createState() => _VoiceModelScreenState();
+}
+
+class _VoiceModelScreenState extends State<VoiceModelScreen> {
+  StreamSubscription<ModelInfo>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    final manager = context.read<SpeechController>().modelManager;
+    _sub = manager.infoStream.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<SpeechController>();
+    final info = controller.modelManager.info;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('نموذج التعرف على الصوت')),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Card(
+                color: WizanoColors.navy.withValues(alpha: 0.06),
+                child: const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'التعرّف على الكلام يتم على جهازك بالكامل',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: WizanoColors.navy,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'لا يُرسل أي تسجيل صوتي إلى أي خدمة خارجية. بعد تنزيل النموذج يعمل الإدخال الصوتي دون إنترنت تمامًا.',
+                        style: TextStyle(color: WizanoColors.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              _statusRow(info),
+              if (info.status == ModelStatus.downloading) ...[
+                const SizedBox(height: 16),
+                LinearProgressIndicator(value: info.progress),
+                const SizedBox(height: 8),
+                Text(
+                  '${(info.bytesDownloaded / 1048576).toStringAsFixed(1)} من ${(info.bytesTotal / 1048576).toStringAsFixed(1)} ميجابايت',
+                  style: const TextStyle(color: WizanoColors.textMuted),
+                ),
+              ],
+              const SizedBox(height: 24),
+              SwitchListTile(
+                value: controller.vocabularyEnabled,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('تصحيح الأخطاء بمفردات المحل'),
+                subtitle: const Text(
+                  'يصحّح الكلمات القريبة من أصناف محلك بعد التعرّف — يعمل دون إنترنت.',
+                ),
+                onChanged: (v) => controller.setVocabularyEnabled(v),
+              ),
+              const SizedBox(height: 12),
+              if (info.status == ModelStatus.ready)
+                ElevatedButton(
+                  onPressed: () => controller.modelManager.deleteModel(),
+                  child: const Text('حذف النموذج'),
+                )
+              else
+                ElevatedButton(
+                  onPressed: info.status == ModelStatus.downloading
+                      ? null
+                      : () => controller.ensureModel(),
+                  child: Text(
+                    info.status == ModelStatus.downloading
+                        ? 'جارٍ التنزيل...'
+                        : 'تنزيل النموذج (~135 ميجابايت)',
+                  ),
+                ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('رجوع'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statusRow(ModelInfo info) {
+    final (String label, IconData icon, Color color) = switch (info.status) {
+      ModelStatus.notDownloaded => ('لم يُنزَّل بعد', Icons.download_outlined, WizanoColors.textMuted),
+      ModelStatus.downloading => ('جارٍ التنزيل...', Icons.downloading, WizanoColors.gold),
+      ModelStatus.verifying => ('جارٍ التحقق من الملف', Icons.check_circle_outline, WizanoColors.gold),
+      ModelStatus.ready => ('جاهز — يعمل دون اتصال', Icons.check_circle, Colors.green),
+      ModelStatus.error => ('حدث خطأ أثناء التنزيل', Icons.error_outline, Colors.red),
+    };
+
+    return Row(
+      children: [
+        Icon(icon, color: color),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(color: color, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
+    );
+  }
+}
+

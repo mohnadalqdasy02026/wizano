@@ -1,0 +1,478 @@
+﻿import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+
+import '../../domain/entities/models.dart';
+import '../finance/adjustment_form_screen.dart';
+import '../finance/cancel_purchase_screen.dart';
+import '../finance/return_form_screen.dart';
+import '../purchases/purchase_controller.dart';
+
+/// S19 — تفاصيل أي عملية في كشف الحساب: القيم، النوع/المصدر، الحالة، والأثر على الرصيد.
+///
+/// يوفّر إجراءات المرحلة 11: تسجيل مرتجع، إلغاء عملية (للمشتريات النشطة)، وتصحيح مالي.
+class OperationDetailsScreen extends StatefulWidget {
+  const OperationDetailsScreen({
+    super.key,
+    required this.entry,
+    this.shopId,
+    this.customerId,
+    this.customerName,
+    this.onChanged,
+  });
+
+  final StatementEntry entry;
+  final String? shopId;
+  final String? customerId;
+  final String? customerName;
+  final VoidCallback? onChanged;
+
+  @override
+  State<OperationDetailsScreen> createState() => _OperationDetailsScreenState();
+}
+
+class _OperationDetailsScreenState extends State<OperationDetailsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('تفاصيل العملية')),
+      body: _buildBody(context),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Card(
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: _getTypeColor(widget.entry.type),
+                        child: Icon(_getTypeIcon(widget.entry.type), color: Colors.white, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _getTypeLabel(widget.entry.type),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '#${widget.entry.shopSeq ?? widget.entry.id.substring(0, 8)}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(widget.entry.status),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          _getStatusLabel(widget.entry.status),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildInfoColumn(
+                          label: 'التاريخ',
+                          value: _formatDate(widget.entry.occurredAt),
+                          icon: Icons.calendar_today,
+                          color: Colors.blue,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildInfoColumn(
+                          label: 'المبلغ',
+                          value: '${widget.entry.effect >= 0 ? '+' : ''}${NumberFormat('#,###').format(widget.entry.effect.abs())}',
+                          icon: widget.entry.effect >= 0 ? Icons.arrow_upward : Icons.arrow_downward,
+                          color: widget.entry.effect >= 0 ? Colors.green : Colors.red,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildInfoColumn(
+                          label: 'الرصيد بعد',
+                          value: NumberFormat('#,###').format(widget.entry.balanceAfter),
+                          icon: Icons.account_balance_wallet,
+                          color: const Color(0xFF0B2A4A),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          if (widget.entry.description.isNotEmpty) ...[
+            const Text(
+              'التفاصيل',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                widget.entry.description,
+                style: const TextStyle(fontSize: 14, height: 1.5),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+
+          if (widget.entry.purchaseId != null) ...[
+            const Text(
+              'العملية المرتبطة',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.link, color: Color(0xFF0B2A4A)),
+              title: const Text('العملية المرتبطة'),
+              subtitle: Text('#${widget.entry.purchaseId?.substring(0, 8) ?? ''}'),
+              trailing: const Icon(Icons.chevron_left),
+              onTap: () {
+                // TODO: التنقل للعملية المرتبطة
+              },
+            ),
+            const SizedBox(height: 24),
+          ],
+
+          _buildAdjustmentTypeSection(),
+
+          const SizedBox(height: 32),
+          _buildActionButtons(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdjustmentTypeSection() {
+    final entry = widget.entry;
+    if (entry.type != 'adjustment') {
+      return const SizedBox.shrink();
+    }
+    final isCancellation = entry.adjustmentKind == 'cancellation';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'نوع التصحيح',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isCancellation ? Colors.red[50] : Colors.blue[50],
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            isCancellation ? 'إلغاء عملية' : 'تصحيح مالي',
+            style: TextStyle(
+              color: isCancellation ? Colors.red[700] : Colors.blue[700],
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons() {
+    final entry = widget.entry;
+    final isActivePurchase = entry.isPurchase && entry.status == 'active';
+    if (!isActivePurchase) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _openCancel,
+                icon: const Icon(Icons.cancel_outlined),
+                label: const Text('إلغاء العملية'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red[600],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _openReturn,
+                icon: const Icon(Icons.assignment_return_outlined),
+                label: const Text('تسجيل مرتجع'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange[600],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (widget.customerId != null) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _openAdjustment,
+              icon: const Icon(Icons.tune),
+              label: const Text('تصحيح مالي'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _openCancel() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final controller = context.read<PurchaseController>();
+    int purchaseVersion = 1;
+    try {
+      final purchase = await controller.getPurchase(widget.entry.id);
+      purchaseVersion = purchase?.version ?? 1;
+    } catch (_) {}
+
+    final result = await navigator.push(
+      MaterialPageRoute(
+        builder: (_) => CancelPurchaseScreen(
+          purchaseId: widget.entry.id,
+          purchaseLabel:
+              widget.entry.shopSeq == null ? null : '#${widget.entry.shopSeq}',
+          purchaseEffect: widget.entry.effect,
+          purchaseVersion: purchaseVersion,
+        ),
+      ),
+    );
+    if (result != null) {
+      widget.onChanged?.call();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('تم إلغاء العملية.')),
+      );
+    }
+  }
+
+  Future<void> _openReturn() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReturnFormScreen(
+          purchaseId: widget.entry.id,
+          purchaseLabel:
+              widget.entry.shopSeq == null ? null : '#${widget.entry.shopSeq}',
+          maxAmount: widget.entry.effect,
+        ),
+      ),
+    );
+    if (result != null) {
+      widget.onChanged?.call();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('تم تسجيل المرتجع.')),
+      );
+    }
+  }
+
+  Future<void> _openAdjustment() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AdjustmentFormScreen(
+          customerId: widget.customerId!,
+          customerName: widget.customerName ?? '',
+          relatedPurchaseId: widget.entry.isPurchase ? widget.entry.id : null,
+        ),
+      ),
+    );
+    if (result != null) {
+      widget.onChanged?.call();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('تم تسجيل التصحيح.')),
+      );
+    }
+  }
+
+  Color _getTypeColor(String type) {
+    switch (type) {
+      case 'purchase':
+        return Colors.blue[800]!;
+      case 'payment':
+        return Colors.teal;
+      case 'return':
+        return Colors.orange;
+      case 'adjustment':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getTypeIcon(String type) {
+    switch (type) {
+      case 'purchase':
+        return Icons.shopping_bag_outlined;
+      case 'payment':
+        return Icons.payments_outlined;
+      case 'return':
+        return Icons.assignment_return_outlined;
+      case 'adjustment':
+        return Icons.tune;
+      default:
+        return Icons.help_outline;
+    }
+  }
+
+  String _getTypeLabel(String type) {
+    switch (type) {
+      case 'purchase':
+        return 'شراء';
+      case 'payment':
+        return 'دفعة';
+      case 'return':
+        return 'مرتجع';
+      case 'adjustment':
+        return 'تصحيح';
+      default:
+        return type;
+    }
+  }
+
+  String _getStatusLabel(String status) {
+    switch (status) {
+      case 'active':
+        return 'نشط';
+      case 'cancelled':
+        return 'ملغى';
+      case 'completed':
+        return 'مكتمل';
+      case 'pending':
+        return 'معلق';
+      default:
+        return status;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'active':
+        return Colors.green;
+      case 'cancelled':
+        return Colors.red;
+      case 'completed':
+        return Colors.blue;
+      case 'pending':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _formatDate(String iso) {
+    try {
+      return DateFormat('yyyy/MM/dd HH:mm').format(DateTime.parse(iso).toLocal());
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  Widget _buildInfoColumn({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.black87,
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+}
+

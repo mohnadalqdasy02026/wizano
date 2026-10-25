@@ -1,0 +1,34 @@
+# WIZANO — ملفات يجب استبعادها من المستودع
+node_modules/
+dist/
+build/
+*.log
+*.apk
+
+# الأسرار والإعدادات الحقيقية (المرجع: .env.example)
+.env
+.env.*
+!.env.example
+
+# أنظمة ومحررات
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+pubspec.lock
+**/android/.gradle/
+**/android/local.properties
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/ios/Pods/
+# Android release signing credentials must never be committed.
+**/android/key.properties
+**/*.jks
+**/*.keystore
