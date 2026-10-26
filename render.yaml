@@ -6,8 +6,9 @@ services:
     region: frankfurt
     rootDir: server
     buildCommand: npm ci && npm run build
-    preDeployCommand: npm run db:migrate
-    startCommand: npm run start
+    # Free Render services do not support pre-deploy commands. Run database
+    # migrations immediately before starting the API instead.
+    startCommand: npm run db:migrate && npm run start
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV
