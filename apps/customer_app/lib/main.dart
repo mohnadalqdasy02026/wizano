@@ -86,37 +86,25 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _email = TextEditingController();
-  final _password = TextEditingController();
   final _invitationCode = TextEditingController();
   String? _error;
   bool _loading = false;
 
   @override
-  void dispose() { _email.dispose(); _password.dispose(); _invitationCode.dispose(); super.dispose(); }
+  void dispose() { _invitationCode.dispose(); super.dispose(); }
 
   Future<void> _login() async {
     if (!_apiConfigured) { setState(() => _error = 'استخدم API_BASE_URL بعنوان HTTPS.'); return; }
     setState(() { _loading = true; _error = null; });
     try {
-      final response = await http.post(Uri.parse('$_apiBase/api/v1/auth/login'), headers: const {'content-type': 'application/json'}, body: jsonEncode({'email': _email.text.trim(), 'password': _password.text})).timeout(const Duration(seconds: 12));
+      final code = _invitationCode.text.trim().toUpperCase();
+      if (code.isEmpty) { setState(() => _error = 'أدخل رمز أو رابط الدعوة.'); return; }
+      final response = await http.post(Uri.parse('$_apiBase/api/v1/customer-invitations/access'), headers: const {'content-type': 'application/json'}, body: jsonEncode({'code': code})).timeout(const Duration(seconds: 12));
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       final tokens = payload['data']?['tokens'] as Map<String, dynamic>?;
       final access = tokens?['accessToken'] as String?;
       final refresh = tokens?['refreshToken'] as String?;
-      if (response.statusCode != 200 || access == null || refresh == null) { setState(() => _error = 'بيانات الدخول غير صحيحة.'); return; }
-      final invitationCode = _invitationCode.text.trim();
-      if (invitationCode.isNotEmpty) {
-        final invitationResponse = await http.post(
-          Uri.parse('$_apiBase/api/v1/customer-invitations/accept'),
-          headers: {'content-type': 'application/json', 'authorization': 'Bearer $access'},
-          body: jsonEncode({'code': invitationCode}),
-        ).timeout(const Duration(seconds: 12));
-        if (invitationResponse.statusCode != 200) {
-          setState(() => _error = 'رمز الدعوة غير صالح أو منتهي.');
-          return;
-        }
-      }
+      if (response.statusCode != 200 || access == null || refresh == null) { setState(() => _error = 'رابط الدعوة غير صالح أو مستخدم أو منتهي.'); return; }
       await _storage.write(key: 'wizano.customer.access', value: access);
       await _storage.write(key: 'wizano.customer.refresh', value: refresh);
       if (!mounted) return;
@@ -132,11 +120,11 @@ class _LoginScreenState extends State<LoginScreen> {
     const SizedBox(height: 8),
     const Text('حسابك واضح، وحقك محفوظ.', style: TextStyle(color: CustomerColors.navyBright, fontWeight: FontWeight.w800, fontSize: 18)),
     const SizedBox(height: 20),
-    TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'البريد الإلكتروني')),
-    TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة المرور')),
-    TextField(controller: _invitationCode, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'رمز الدعوة (عند الربط الأول فقط)')),
+    const Text('ادخل رمز الدعوة الذي يرسله لك صاحب المحل. لا تحتاج بريدًا إلكترونيًا أو كلمة مرور.', textAlign: TextAlign.center),
+    const SizedBox(height: 12),
+    TextField(controller: _invitationCode, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'رمز الدعوة')),
     const SizedBox(height: 12), if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
-    ElevatedButton(onPressed: _loading ? null : _login, child: Text(_loading ? 'جارٍ الدخول...' : 'دخول')),
+    ElevatedButton(onPressed: _loading ? null : _login, child: Text(_loading ? 'جارٍ التحقق...' : 'فتح حسابي')),
   ])));
 }
 

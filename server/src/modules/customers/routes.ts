@@ -13,6 +13,7 @@ import {
 } from "../../middleware/auth.js";
 import {
   acceptInvitation,
+  accessWithInvitation,
   archiveCustomer,
   createCustomer,
   createInvitation,
@@ -50,6 +51,15 @@ export async function registerCustomerRoutes(
   app: FastifyInstance,
   deps: CustomersDeps = defaultCustomersDeps,
 ): Promise<void> {
+  app.post(
+    "/api/v1/customer-invitations/access",
+    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+    async (req: FastifyRequest) => {
+      const body = parseOrThrow(acceptInvitationBodySchema, req.body);
+      return { data: await accessWithInvitation(deps.db, body.code) };
+    },
+  );
+
   app.post(
     "/api/v1/customer-invitations/accept",
     { preHandler: authenticate },

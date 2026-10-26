@@ -3,7 +3,7 @@
 // مرتبطًا بالمحل عبر customer_shop_links بحالة active.
 
 import { and, eq, gt, ilike, or, sql } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { Database } from "../../db/index.js";
 import {
   customers,
@@ -11,8 +11,11 @@ import {
   customerUserLinks,
   invitations,
   shopMembers,
+  users,
 } from "../../db/schema.js";
 import { conflict, notFound } from "../../common/errors.js";
+import { hashPassword } from "../auth/password.js";
+import { issueTokens, type AuthTokens } from "../auth/service.js";
 
 export interface CustomerView {
   id: string;
@@ -278,6 +281,43 @@ export async function acceptInvitation(
     if (accepted.length === 0) throw conflict("استُخدم رمز الدعوة بالفعل.");
     return { shopId: invitation.shopId, customerId: invitation.customerId };
   });
+}
+
+// دخول تطبيق العميل عبر رابط/رمز الدعوة فقط. الرمز لمرة واحدة ويُنشئ حسابًا
+// بلا بريد أو كلمة مرور قابلة للاستخدام، ثم يصدر جلسة محمية برموز الوصول.
+export async function accessWithInvitation(
+  db: Database,
+  code: string,
+): Promise<{ shopId: string; customerId: string; tokens: AuthTokens }> {
+  const session = await db.transaction(async (tx) => {
+    const rows = await tx
+      .select({ invitation: invitations, customer: customers })
+      .from(invitations)
+      .innerJoin(customers, eq(invitations.customerId, customers.id))
+      .where(and(eq(invitations.code, code), eq(invitations.status, "pending"), gt(invitations.expiresAt, new Date())))
+      .limit(1);
+    const row = rows[0];
+    if (!row) throw notFound("رابط الدعوة غير صالح أو منتهي.");
+
+    const passwordHash = await hashPassword(randomBytes(32).toString("base64url"));
+    const inserted = await tx
+      .insert(users)
+      .values({ displayName: row.customer.displayName, passwordHash })
+      .returning({ id: users.id });
+    const user = inserted[0];
+    if (!user) throw new Error("تعذر إنشاء جلسة العميل.");
+
+    await tx.insert(shopMembers).values({ shopId: row.invitation.shopId, userId: user.id, role: "customer" });
+    await tx.insert(customerUserLinks).values({ customerId: row.invitation.customerId, userId: user.id });
+    const accepted = await tx
+      .update(invitations)
+      .set({ status: "accepted", acceptedAt: new Date() })
+      .where(and(eq(invitations.id, row.invitation.id), eq(invitations.status, "pending")))
+      .returning({ id: invitations.id });
+    if (accepted.length === 0) throw conflict("استُخدم رابط الدعوة بالفعل.");
+    return { userId: user.id, shopId: row.invitation.shopId, customerId: row.invitation.customerId };
+  });
+  return { ...session, tokens: await issueTokens(db, session.userId) };
 }
 
 export async function getCustomerIdForUser(

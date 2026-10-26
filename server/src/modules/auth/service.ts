@@ -68,7 +68,7 @@ async function primaryRole(db: Database, userId: string): Promise<string> {
   return rows[0]?.role ?? "owner";
 }
 
-async function issueTokens(db: Database, userId: string): Promise<AuthTokens> {
+export async function issueTokens(db: Database, userId: string): Promise<AuthTokens> {
   const role = await primaryRole(db, userId);
   const { token: accessToken, expiresIn } = await signAccessToken({
     sub: userId,
