@@ -5,7 +5,9 @@ services:
     plan: free
     region: frankfurt
     rootDir: server
-    buildCommand: npm ci && npm run build
+    # NODE_ENV is production, but the TypeScript build and migration runner
+    # are dev dependencies and are needed while Render prepares the service.
+    buildCommand: npm ci --include=dev && npm run build
     # Free Render services do not support pre-deploy commands. Run database
     # migrations immediately before starting the API instead.
     startCommand: npm run db:migrate && npm run start
