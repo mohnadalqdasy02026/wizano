@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../app/widgets.dart';
+import '../../app/theme.dart';
 import 'auth_controller.dart';
 import 'register_screen.dart';
 
@@ -42,10 +43,28 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final busy = context.watch<AuthController>().busy;
     return Scaffold(
-      appBar: AppBar(title: const Text('تسجيل الدخول')),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          child: Column(children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(colors: [WizanoColors.navy, WizanoColors.navyBright], begin: Alignment.topRight, end: Alignment.bottomLeft),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(34)),
+              ),
+              child: Column(children: [
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Image.asset('assets/images/app_icon.png', height: 48),
+                  const SizedBox(width: 10),
+                  const Text('WIZANO', textDirection: TextDirection.ltr, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 25, letterSpacing: 1.2)),
+                ]),
+                const SizedBox(height: 5),
+                const Text('إدارة ديونك ومشترياتك بثقة', style: TextStyle(color: Color(0xFFDCEBFF), fontWeight: FontWeight.w600)),
+              ]),
+            ),
+            Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
           child: Form(
             key: _formKey,
             child: Column(
@@ -53,13 +72,14 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 Image.asset(
                   'assets/images/shop_login_hero.png',
-                  height: 190,
+                  height: 205,
                   fit: BoxFit.contain,
                   filterQuality: FilterQuality.high,
                 ),
-                const SizedBox(height: 4),
-                const WizanoLogo(),
-                const SizedBox(height: 24),
+                const Align(alignment: Alignment.centerRight, child: Text('مرحبًا بعودتك', style: TextStyle(fontSize: 25, fontWeight: FontWeight.w900, color: WizanoColors.navy))),
+                const SizedBox(height: 5),
+                const Align(alignment: Alignment.centerRight, child: Text('سجّل دخولك للوصول إلى إدارة محلك.', style: TextStyle(color: WizanoColors.textMuted))),
+                const SizedBox(height: 22),
                 WizanoField(
                   label: 'البريد الإلكتروني',
                   controller: _email,
@@ -89,9 +109,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 8),
                 ],
                 const SizedBox(height: 8),
-                ElevatedButton(
+                SizedBox(width: double.infinity, child: ElevatedButton.icon(
                   onPressed: busy ? null : _submit,
-                  child: busy
+                  icon: busy
                       ? const SizedBox(
                           width: 20,
                           height: 20,
@@ -100,8 +120,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text('دخول'),
-                ),
+                      : const Icon(Icons.login_rounded),
+                  label: Text(busy ? 'جارٍ الدخول...' : 'دخول إلى لوحة التحكم'),
+                )),
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: busy
@@ -116,6 +137,8 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
             ),
           ),
+        ),
+          ]),
         ),
       ),
     );
