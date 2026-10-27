@@ -52,6 +52,10 @@ import {
   registerNotificationRoutes,
   type NotificationsDeps,
 } from "./modules/notifications/routes.js";
+import {
+  registerMessageRoutes,
+  type MessagesDeps,
+} from "./modules/messages/routes.js";
 
 export interface BuildAppOptions {
   healthDeps?: HealthDeps;
@@ -66,6 +70,7 @@ export interface BuildAppOptions {
   auditDeps?: AuditDeps;
   objectionsDeps?: ObjectionsDeps;
   notificationsDeps?: NotificationsDeps;
+  messagesDeps?: MessagesDeps;
 }
 
 export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -120,6 +125,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await registerAuditRoutes(app, opts.auditDeps);
   await registerObjectionRoutes(app, opts.objectionsDeps);
   await registerNotificationRoutes(app, opts.notificationsDeps);
+  await registerMessageRoutes(app, opts.messagesDeps);
 
   app.setNotFoundHandler((_req, reply) => {
     reply.status(404).send({

@@ -169,7 +169,7 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 9),
         const Text('لا تحتاج إلى بريد إلكتروني أو كلمة مرور', style: TextStyle(color: Color(0xFF718096), fontSize: 12, fontWeight: FontWeight.w600)),
       ])),
-    ])),
+    ]))),
   );
 }
 
@@ -200,12 +200,237 @@ class _HomeScreenState extends State<HomeScreen> {
       final response = await http.get(Uri.parse('$_apiBase/api/v1/shops'), headers: {'authorization': 'Bearer ${widget.token}'}).timeout(const Duration(seconds: 12));
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode != 200) throw const FormatException();
-      setState(() => _shops = (payload['data']?['items'] as List?) ?? const []);
+      setState(() {
+        _shops = (payload['data']?['items'] as List?) ?? const [];
+        _error = null;
+      });
     } catch (_) { setState(() => _error = 'تعذر جلب المحلات المرتبطة بحسابك.'); }
   }
   Future<void> _logout() async { await _storage.deleteAll(); if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false); }
+
+  Future<void> _openAddShop() async {
+    final added = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => AddShopScreen(token: widget.token)),
+    );
+    if (added == true && mounted) await _load();
+  }
+
+  void _openStatement(Map<String, dynamic> shop) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => StatementScreen(
+          token: widget.token,
+          shopId: shop['id'] as String,
+          shopName: shop['name']?.toString() ?? '',
+        ),
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('محلاتي'), actions: [IconButton(onPressed: _logout, icon: const Icon(Icons.logout_rounded))]), body: _error != null ? Center(child: Text(_error!)) : _shops.isEmpty ? const Center(child: Text('لا يوجد محل مرتبط. اطلب رمز دعوة من صاحب المحل.')) : ListView(padding: const EdgeInsets.all(18), children: [const Text('اختر المحل لعرض كشف حسابك', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)), const SizedBox(height: 14), ..._shops.map((shop) => Card(elevation: 0, clipBehavior: Clip.antiAlias, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), child: InkWell(onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StatementScreen(token: widget.token, shopId: shop['id'] as String, shopName: shop['name']?.toString() ?? ''))), child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: CustomerColors.teal.withValues(alpha: .14), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.storefront_rounded, color: CustomerColors.navy)), const SizedBox(width: 13), Expanded(child: Text(shop['name']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17))), const Icon(Icons.chevron_left_rounded, color: CustomerColors.navyBright)]))))]));
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: const Text('محلاتي'),
+      actions: [IconButton(onPressed: _logout, icon: const Icon(Icons.logout_rounded))],
+    ),
+    drawer: Drawer(
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [CustomerColors.navy, CustomerColors.navyBright],
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                ),
+              ),
+              child: Row(children: [
+                Image.asset('assets/images/app_icon.png', width: 42, height: 42),
+                const SizedBox(width: 12),
+                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('WIZANO', textDirection: TextDirection.ltr, style: TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                  SizedBox(height: 3),
+                  Text('حسابات المحلات', style: TextStyle(color: Color(0xFFD9E8FF), fontSize: 13)),
+                ])),
+              ]),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Text('محلاتي المرتبطة', style: TextStyle(color: CustomerColors.navy, fontWeight: FontWeight.w900)),
+            ),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: _shops.map((item) {
+                  final shop = item as Map<String, dynamic>;
+                  return ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: CustomerColors.teal.withValues(alpha: .14), borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.storefront_rounded, color: CustomerColors.navy),
+                    ),
+                    title: Text(shop['name']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: Text(shop['currency']?.toString() ?? ''),
+                    trailing: const Icon(Icons.chevron_left_rounded),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _openStatement(shop);
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: CustomerColors.gold.withValues(alpha: .18), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.add_business_rounded, color: CustomerColors.navy),
+              ),
+              title: const Text('إضافة محل جديد', style: TextStyle(fontWeight: FontWeight.w900)),
+              subtitle: const Text('استخدم رمز دعوة من صاحب المحل'),
+              onTap: () {
+                Navigator.pop(context);
+                _openAddShop();
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    ),
+    body: _error != null
+        ? Center(child: Text(_error!))
+        : _shops.isEmpty
+            ? const Center(child: Text('لا يوجد محل مرتبط. اطلب رمز دعوة من صاحب المحل.'))
+            : ListView(
+                padding: const EdgeInsets.all(18),
+                children: [
+                  const Text('اختر المحل لعرض كشف حسابك', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 14),
+                  ..._shops.map((shop) => Card(
+                    elevation: 0,
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    child: InkWell(
+                      onTap: () => _openStatement(shop as Map<String, dynamic>),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(children: [
+                          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: CustomerColors.teal.withValues(alpha: .14), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.storefront_rounded, color: CustomerColors.navy)),
+                          const SizedBox(width: 13),
+                          Expanded(child: Text(shop['name']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17))),
+                          const Icon(Icons.chevron_left_rounded, color: CustomerColors.navyBright),
+                        ]),
+                      ),
+                    ),
+                  )),
+                ],
+              ),
+  );
+}
+
+class AddShopScreen extends StatefulWidget {
+  const AddShopScreen({super.key, required this.token});
+
+  final String token;
+
+  @override
+  State<AddShopScreen> createState() => _AddShopScreenState();
+}
+
+class _AddShopScreenState extends State<AddShopScreen> {
+  final _invitationCode = TextEditingController();
+  String? _error;
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _invitationCode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addShop() async {
+    final code = _codeFromInvitation(_invitationCode.text);
+    if (code.isEmpty) {
+      setState(() => _error = 'أدخل رمز أو رابط الدعوة.');
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_apiBase/api/v1/customer-invitations/accept'),
+            headers: {
+              'content-type': 'application/json',
+              'authorization': 'Bearer ${widget.token}',
+            },
+            body: jsonEncode({'code': code}),
+          )
+          .timeout(const Duration(seconds: 12));
+      final payload = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode != 200) {
+        final message = (payload['error'] as Map<String, dynamic>?)?['message_ar']?.toString();
+        setState(() => _error = message ?? 'تعذر إضافة المحل (رمز الحالة: ${response.statusCode}).');
+        return;
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (_) {
+      setState(() => _error = 'تعذر الوصول إلى الخادم.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _codeFromInvitation(String raw) {
+    final text = raw.trim();
+    final uri = Uri.tryParse(text);
+    return (uri?.queryParameters['code'] ?? text).trim().toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('إضافة محل جديد')),
+    body: SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Image.asset('assets/images/customer_login_hero.png', height: 205, fit: BoxFit.contain),
+            const SizedBox(height: 8),
+            const Text('ربط محل إضافي', style: TextStyle(color: CustomerColors.navy, fontSize: 26, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            const Text('أدخل رمز الدعوة من صاحب المحل. سيُضاف المحل إلى حسابك الحالي، ولن تحتاج لإنشاء حساب جديد.', style: TextStyle(color: Color(0xFF60738C), height: 1.6)),
+            const SizedBox(height: 22),
+            TextField(
+              controller: _invitationCode,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(labelText: 'رمز أو رابط الدعوة', prefixIcon: Icon(Icons.add_link_rounded, color: CustomerColors.teal)),
+            ),
+            if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: _MessageBox(message: _error!)),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _loading ? null : _addShop,
+              icon: _loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.storefront_rounded),
+              label: Text(_loading ? 'جارٍ إضافة المحل...' : 'إضافة المحل إلى حسابي'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class StatementScreen extends StatefulWidget {
@@ -228,16 +453,172 @@ class _StatementScreenState extends State<StatementScreen> {
       setState(() => _statement = payload['data'] as Map<String, dynamic>);
     } catch (_) { setState(() => _error = 'تعذر جلب كشف الحساب.'); }
   }
+  void _openMessages() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => CustomerMessagesScreen(token: widget.token, shopId: widget.shopId, shopName: widget.shopName)));
+  }
   @override
   Widget build(BuildContext context) {
-    if (_error != null) return Scaffold(appBar: AppBar(title: Text(widget.shopName)), body: Center(child: Text(_error!)));
+    if (_error != null) return Scaffold(appBar: AppBar(title: Text(widget.shopName), actions: [IconButton(tooltip: 'مراسلة المحل', onPressed: _openMessages, icon: const Icon(Icons.forum_rounded))]), body: Center(child: Text(_error!)));
     final statement = _statement;
     if (statement == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final entries = statement['entries'] as List<dynamic>? ?? const [];
-    return Scaffold(appBar: AppBar(title: Text(widget.shopName)), body: Column(children: [
-      Container(width: double.infinity, margin: const EdgeInsets.fromLTRB(16, 16, 16, 12), padding: const EdgeInsets.all(20), decoration: BoxDecoration(gradient: const LinearGradient(colors: [CustomerColors.navy, CustomerColors.navyBright]), borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: CustomerColors.navy.withValues(alpha: .2), blurRadius: 20, offset: const Offset(0, 8))]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('الرصيد المتبقي', style: TextStyle(color: Color(0xFFBBD7FF), fontWeight: FontWeight.w600)), const SizedBox(height: 7), Text('${statement['balance']} ر.ي', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 29)), const SizedBox(height: 8), const Row(children: [Icon(Icons.verified_rounded, color: CustomerColors.teal, size: 18), SizedBox(width: 6), Text('كشف حساب محدّث من المحل', style: TextStyle(color: Colors.white70, fontSize: 12))])])),
-      const Padding(padding: EdgeInsets.fromLTRB(20, 8, 20, 6), child: Align(alignment: Alignment.centerRight, child: Text('سجل العمليات', style: TextStyle(fontWeight: FontWeight.w900, color: CustomerColors.navy, fontSize: 17))),),
-      Expanded(child: entries.isEmpty ? const Center(child: Text('لا توجد عمليات مسجلة حتى الآن')) : ListView.separated(padding: const EdgeInsets.fromLTRB(16, 4, 16, 24), itemCount: entries.length, separatorBuilder: (_, __) => const SizedBox(height: 9), itemBuilder: (_, i) { final entry = entries[i] as Map<String, dynamic>; final effect = entry['effect']?.toString() ?? ''; final positive = effect.contains('payment') || effect.contains('credit'); return Card(elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)), child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7), leading: Container(padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: (positive ? CustomerColors.teal : CustomerColors.gold).withValues(alpha: .15), borderRadius: BorderRadius.circular(13)), child: Icon(positive ? Icons.south_west_rounded : Icons.receipt_long_rounded, color: positive ? CustomerColors.teal : const Color(0xFFB7791F))), title: Text(entry['description']?.toString() ?? entry['type']?.toString() ?? 'عملية', style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(entry['occurredAt']?.toString().split('T').first ?? ''), trailing: Text(effect, style: TextStyle(fontWeight: FontWeight.w800, color: positive ? CustomerColors.teal : CustomerColors.navy))); }))
-    ]));
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.shopName), actions: [IconButton(tooltip: 'مراسلة المحل', onPressed: _openMessages, icon: const Icon(Icons.forum_rounded))]),
+      body: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [CustomerColors.navy, CustomerColors.navyBright]),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [BoxShadow(color: CustomerColors.navy.withValues(alpha: .2), blurRadius: 20, offset: const Offset(0, 8))],
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('الرصيد المتبقي', style: TextStyle(color: Color(0xFFBBD7FF), fontWeight: FontWeight.w600)),
+              const SizedBox(height: 7),
+              Text('${statement['balance']} ر.ي', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 29)),
+              const SizedBox(height: 8),
+              const Row(children: [Icon(Icons.verified_rounded, color: CustomerColors.teal, size: 18), SizedBox(width: 6), Text('كشف حساب محدّث من المحل', style: TextStyle(color: Colors.white70, fontSize: 12))]),
+            ]),
+          ),
+          const Padding(padding: EdgeInsets.fromLTRB(20, 8, 20, 6), child: Align(alignment: Alignment.centerRight, child: Text('سجل العمليات', style: TextStyle(fontWeight: FontWeight.w900, color: CustomerColors.navy, fontSize: 17)))),
+          Expanded(
+            child: entries.isEmpty
+                ? const Center(child: Text('لا توجد عمليات مسجلة حتى الآن'))
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                    itemCount: entries.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 9),
+                    itemBuilder: (_, i) {
+                      final entry = entries[i] as Map<String, dynamic>;
+                      final effect = entry['effect']?.toString() ?? '';
+                      final positive = effect.contains('payment') || effect.contains('credit');
+                      return Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                          leading: Container(padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: (positive ? CustomerColors.teal : CustomerColors.gold).withValues(alpha: .15), borderRadius: BorderRadius.circular(13)), child: Icon(positive ? Icons.south_west_rounded : Icons.receipt_long_rounded, color: positive ? CustomerColors.teal : const Color(0xFFB7791F))),
+                          title: Text(entry['description']?.toString() ?? entry['type']?.toString() ?? 'عملية', style: const TextStyle(fontWeight: FontWeight.w800)),
+                          subtitle: Text(entry['occurredAt']?.toString().split('T').first ?? ''),
+                          trailing: Text(effect, style: TextStyle(fontWeight: FontWeight.w800, color: positive ? CustomerColors.teal : CustomerColors.navy)),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class CustomerMessagesScreen extends StatefulWidget {
+  const CustomerMessagesScreen({super.key, required this.token, required this.shopId, required this.shopName});
+  final String token; final String shopId; final String shopName;
+  @override
+  State<CustomerMessagesScreen> createState() => _CustomerMessagesScreenState();
+}
+
+class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
+  final _message = TextEditingController();
+  final _scroll = ScrollController();
+  List<Map<String, dynamic>> _messages = const [];
+  String? _error;
+  bool _loading = true;
+  bool _sending = false;
+
+  @override
+  void initState() { super.initState(); _load(); }
+  @override
+  void dispose() { _message.dispose(); _scroll.dispose(); super.dispose(); }
+
+  Future<void> _load() async {
+    try {
+      final response = await http.get(Uri.parse('$_apiBase/api/v1/shops/${widget.shopId}/my-messages'), headers: {'authorization': 'Bearer ${widget.token}'}).timeout(const Duration(seconds: 12));
+      final payload = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode != 200) throw const FormatException();
+      final items = (payload['data'] as Map<String, dynamic>)['items'] as List<dynamic>? ?? const [];
+      if (!mounted) return;
+      setState(() { _messages = items.cast<Map<String, dynamic>>(); _error = null; _loading = false; });
+      _scrollToLatest();
+    } catch (_) {
+      if (mounted) setState(() { _error = 'تعذر تحميل المحادثة. تحقق من اتصال الإنترنت.'; _loading = false; });
+    }
+  }
+
+  Future<void> _send() async {
+    final body = _message.text.trim();
+    if (body.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    try {
+      final response = await http.post(Uri.parse('$_apiBase/api/v1/shops/${widget.shopId}/my-messages'), headers: {'authorization': 'Bearer ${widget.token}', 'content-type': 'application/json'}, body: jsonEncode({'body': body})).timeout(const Duration(seconds: 12));
+      final payload = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) throw const FormatException();
+      if (!mounted) return;
+      _message.clear();
+      setState(() { _messages = [..._messages, (payload['data'] as Map<String, dynamic>)]; _sending = false; });
+      _scrollToLatest();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _sending = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر إرسال الرسالة. حاول مجددًا.')));
+    }
+  }
+
+  void _scrollToLatest() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+    });
+  }
+
+  String _time(Object? iso) {
+    final value = iso?.toString() ?? '';
+    return value.length >= 16 ? value.substring(11, 16) : '';
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Column(mainAxisSize: MainAxisSize.min, children: [const Text('مراسلة المحل'), Text(widget.shopName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400))]), actions: [IconButton(tooltip: 'تحديث', onPressed: _loading ? null : _load, icon: const Icon(Icons.refresh_rounded))]),
+    body: Column(children: [
+      Expanded(child: _content()),
+      SafeArea(top: false, child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Color(0xFFE5E7EB)))),
+        child: Row(children: [
+          Expanded(child: TextField(controller: _message, minLines: 1, maxLines: 4, maxLength: 2000, decoration: const InputDecoration(hintText: 'اكتب رسالة للمحل…', counterText: '', border: OutlineInputBorder()))),
+          const SizedBox(width: 8),
+          IconButton.filled(onPressed: _sending ? null : _send, tooltip: 'إرسال', icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send_rounded)),
+        ]),
+      )),
+    ]),
+  );
+
+  Widget _content() {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Text(_error!, textAlign: TextAlign.center), const SizedBox(height: 12), OutlinedButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_rounded), label: const Text('إعادة المحاولة'))])));
+    if (_messages.isEmpty) return const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.forum_outlined, size: 48, color: CustomerColors.navy), SizedBox(height: 10), Text('ابدأ محادثتك مع المحل برسالة واضحة.')]));
+    return RefreshIndicator(onRefresh: _load, child: ListView.builder(
+      controller: _scroll,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      itemCount: _messages.length,
+      itemBuilder: (_, i) {
+        final item = _messages[i];
+        final mine = item['senderType'] == 'customer';
+        return Align(alignment: mine ? Alignment.centerRight : Alignment.centerLeft, child: Container(
+          constraints: const BoxConstraints(maxWidth: 310),
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 7),
+          decoration: BoxDecoration(color: mine ? CustomerColors.navy : Colors.white, borderRadius: BorderRadius.circular(16), border: mine ? null : Border.all(color: const Color(0xFFE5E7EB))),
+          child: Column(crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start, children: [
+            Text(item['body']?.toString() ?? '', style: TextStyle(color: mine ? Colors.white : const Color(0xFF1F2933))),
+            const SizedBox(height: 4),
+            Text(_time(item['createdAt']), style: TextStyle(fontSize: 10, color: mine ? Colors.white70 : const Color(0xFF6B7280))),
+          ]),
+        ));
+      },
+    ));
   }
 }

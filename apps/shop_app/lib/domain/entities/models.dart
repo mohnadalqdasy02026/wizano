@@ -476,4 +476,32 @@ class AuditEntry {
       );
 }
 
+/// رسالة نصية خاصة في محادثة المحل مع العميل.
+class ConversationMessage {
+  const ConversationMessage({
+    required this.id,
+    required this.body,
+    required this.senderType,
+    required this.createdAt,
+    this.readAt,
+  });
+
+  final String id;
+  final String body;
+  final String senderType;
+  final String createdAt;
+  final String? readAt;
+
+  bool get isFromShop => senderType == 'shop';
+
+  factory ConversationMessage.fromJson(Map<String, dynamic> json) =>
+      ConversationMessage(
+        id: json['id'] as String,
+        body: json['body'] as String,
+        senderType: json['senderType'] as String,
+        createdAt: json['createdAt'] as String,
+        readAt: json['readAt'] as String?,
+      );
+}
+
 

@@ -79,6 +79,11 @@ export const objectionEntityTypeEnum = pgEnum("objection_entity_type", [
   "financial_adjustment",
 ]);
 
+export const messageSenderTypeEnum = pgEnum("message_sender_type", [
+  "shop",
+  "customer",
+]);
+
 export const adjustmentKindEnum = pgEnum("adjustment_kind", [
   "correction",
   "cancellation",
@@ -295,6 +300,31 @@ export const invitations = pgTable(
   (t) => [
     uniqueIndex("invitations_code_unique").on(t.code),
     index("invitations_shop_status_idx").on(t.shopId, t.status),
+  ],
+);
+
+// رسائل خاصة بين العميل والمحل. كل رسالة مقيدة بالمحل والعميل المرتبطين.
+export const customerMessages = pgTable(
+  "customer_messages",
+  {
+    id: id().defaultRandom(),
+    shopId: shopId(),
+    customerId: customerId(),
+    senderUserId: uuid("sender_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    senderType: messageSenderTypeEnum("sender_type").notNull(),
+    body: text("body").notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("customer_messages_conversation_idx").on(
+      t.shopId,
+      t.customerId,
+      t.createdAt,
+    ),
+    index("customer_messages_unread_idx").on(t.shopId, t.customerId, t.readAt),
   ],
 );
 

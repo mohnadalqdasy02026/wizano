@@ -265,6 +265,39 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------------------
+  // المراسلة مع العميل
+  // ---------------------------------------------------------------------------
+
+  Future<List<ConversationMessage>> listCustomerMessages(
+    String shopId,
+    String customerId,
+  ) async {
+    final data = await _send(
+      method: 'GET',
+      path: '/shops/$shopId/customers/$customerId/messages',
+    );
+    final items = data['items'] as List<dynamic>? ?? const [];
+    return items
+        .map((item) => ConversationMessage.fromJson(
+              item as Map<String, dynamic>,
+            ))
+        .toList(growable: false);
+  }
+
+  Future<ConversationMessage> sendCustomerMessage(
+    String shopId,
+    String customerId,
+    String body,
+  ) async {
+    final data = await _send(
+      method: 'POST',
+      path: '/shops/$shopId/customers/$customerId/messages',
+      body: {'body': body},
+    );
+    return ConversationMessage.fromJson(data);
+  }
+
+  // ---------------------------------------------------------------------------
   // المشتريات الآجلة
   // ---------------------------------------------------------------------------
 

@@ -11,6 +11,7 @@ import '../statements/statement_controller.dart';
 import '../statements/statement_screen.dart';
 import 'customer_controller.dart';
 import 'customer_form_screen.dart';
+import '../messages/customer_messages_screen.dart';
 
 /// S11 — ملف العميل: بياناته + رصيده المحسوب + إجراءات (تعديل/أرشفة/دعوة/كشف حساب).
 /// S12 — ربط العميل بالمحل مُدمج هنا عبر زر «رمز الدعوة».
@@ -59,6 +60,20 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   Future<void> _openEdit(Customer customer) async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => CustomerFormScreen(customer: customer)),
+    );
+  }
+
+  Future<void> _openMessages(Customer customer) async {
+    final shopId = _shopId;
+    if (shopId == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CustomerMessagesScreen(
+          shopId: shopId,
+          customerId: customer.id,
+          customerName: customer.displayName,
+        ),
+      ),
     );
   }
 
@@ -256,6 +271,12 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
             onPressed: () => _openStatement(customer),
             icon: const Icon(Icons.receipt_long_outlined),
             label: const Text('كشف الحساب'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _openMessages(customer),
+            icon: const Icon(Icons.forum_outlined),
+            label: const Text('مراسلة العميل'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
