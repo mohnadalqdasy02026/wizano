@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -33,17 +35,44 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   String? _paymentShopId;
   String? _financeShopId;
   String? _syncShopId;
+  Timer? _backgroundSync;
+  bool _refreshing = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // مزامنة صامتة متكررة: لا يحتاج صاحب المحل لسحب الشاشة أو فتح صفحة
+    // المزامنة كي تصل عملياته المحفوظة محليًا إلى الخادم أو تظهر التحديثات.
+    _backgroundSync = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _refreshSilently(),
+    );
   }
 
   @override
   void dispose() {
+    _backgroundSync?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  Future<void> _refreshSilently() async {
+    if (!mounted || _refreshing) return;
+    final sync = context.read<SyncController>();
+    if (sync.shopId == null) return;
+    _refreshing = true;
+    try {
+      await sync.syncNow();
+      if (!mounted) return;
+      await Future.wait([
+        context.read<CustomerController>().load(),
+        context.read<PurchaseController>().load(),
+        context.read<PaymentController>().load(),
+      ]);
+    } finally {
+      _refreshing = false;
+    }
   }
 
   @override
@@ -52,15 +81,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     // لا نعتمد على عدّاد قديم في الذاكرة: الاستعلام من قاعدة البيانات أرخص
     // من خطأ تفويت المزامنة.
     if (state != AppLifecycleState.resumed) return;
-    final sync = context.read<SyncController>();
-    if (sync.shopId == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await sync.syncNow();
-      if (!mounted) return;
-      await Future.wait([
-        context.read<PurchaseController>().load(),
-        context.read<PaymentController>().load(),
-      ]);
+      await _refreshSilently();
     });
   }
 

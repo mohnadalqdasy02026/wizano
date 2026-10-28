@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -26,23 +30,62 @@ class CustomerMessagesScreen extends StatefulWidget {
 class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
+  final _cache = const FlutterSecureStorage();
   List<ConversationMessage> _messages = const [];
   String? _error;
+  Timer? _poller;
+  bool _offline = false;
   bool _loading = true;
   bool _sending = false;
 
   @override
   void initState() {
     super.initState();
+    _restoreCache();
     _load();
+    _poller = Timer.periodic(const Duration(seconds: 7), (_) => _load());
   }
 
   @override
   void dispose() {
+    _poller?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
+
+  String get _cacheKey =>
+      'wizano.shop.messages.${widget.shopId}.${widget.customerId}';
+
+  Future<void> _restoreCache() async {
+    final raw = await _cache.read(key: _cacheKey);
+    if (raw == null) return;
+    try {
+      final rows = jsonDecode(raw) as List<dynamic>;
+      final messages = rows
+          .map((row) => ConversationMessage.fromJson(
+                row as Map<String, dynamic>,
+              ))
+          .toList(growable: false);
+      if (mounted) setState(() { _messages = messages; _loading = false; });
+    } catch (_) {
+      // نسخة قديمة أو غير صالحة: نتجاهلها ونأخذ النسخة القادمة من الخادم.
+    }
+  }
+
+  Future<void> _cacheMessages(List<ConversationMessage> messages) => _cache.write(
+        key: _cacheKey,
+        value: jsonEncode([
+          for (final message in messages)
+            {
+              'id': message.id,
+              'body': message.body,
+              'senderType': message.senderType,
+              'createdAt': message.createdAt,
+              'readAt': message.readAt,
+            },
+        ]),
+      );
 
   Future<void> _load() async {
     try {
@@ -51,17 +94,23 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
             widget.customerId,
           );
       if (!mounted) return;
+      final receivedNew = messages.length > _messages.length;
+      await _cacheMessages(messages);
       setState(() {
         _messages = messages;
         _error = null;
         _loading = false;
+        _offline = false;
       });
-      _scrollToLatest();
+      if (receivedNew) _scrollToLatest();
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'تعذر تحميل المحادثة. تحقق من اتصال الإنترنت ثم أعد المحاولة.';
+        _error = _messages.isEmpty
+            ? 'لا توجد رسائل محفوظة بعد. سيتصل التطبيق تلقائيًا عند عودة الإنترنت.'
+            : null;
         _loading = false;
+        _offline = true;
       });
     }
   }
@@ -82,7 +131,9 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
       setState(() {
         _messages = [..._messages, message];
         _sending = false;
+        _offline = false;
       });
+      await _cacheMessages(_messages);
       _scrollToLatest();
     } catch (_) {
       if (!mounted) return;
@@ -126,16 +177,27 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            tooltip: 'تحديث',
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
       ),
       body: Column(
         children: [
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            child: _offline
+                ? Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    color: WizanoColors.navyBright,
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.cloud_off_rounded, size: 16, color: Colors.white),
+                        SizedBox(width: 6),
+                        Text('غير متصل — تعرض آخر محادثة محفوظة', style: TextStyle(color: Colors.white, fontSize: 12)),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
           Expanded(child: _buildMessages()),
           SafeArea(
             top: false,
@@ -218,18 +280,27 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
         ),
       );
     }
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView.builder(
+    return ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
         itemCount: _messages.length,
         itemBuilder: (context, index) {
           final message = _messages[index];
           final mine = message.isFromShop;
-          return Align(
-            alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(
+          return TweenAnimationBuilder<double>(
+            key: ValueKey(message.id),
+            duration: const Duration(milliseconds: 280),
+            tween: Tween(begin: 0, end: 1),
+            builder: (_, value, child) => Opacity(
+              opacity: value,
+              child: Transform.translate(
+                offset: Offset(0, 14 * (1 - value)),
+                child: child,
+              ),
+            ),
+            child: Align(
+              alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
               constraints: const BoxConstraints(maxWidth: 310),
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 7),
@@ -256,10 +327,10 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
                   ),
                 ],
               ),
+              ),
             ),
           );
         },
-      ),
     );
   }
 }

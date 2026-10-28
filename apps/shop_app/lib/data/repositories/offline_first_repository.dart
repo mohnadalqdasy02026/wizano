@@ -1,5 +1,6 @@
 ﻿import 'dart:convert';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/api_exception.dart';
@@ -62,10 +63,12 @@ class OfflineFirstRepository {
     required LocalStore queue,
     Uuid? uuid,
     ConnectivityMonitor? monitor,
+    FlutterSecureStorage? remoteCache,
   })  : _api = api,
         _queue = queue,
         _uuid = uuid ?? const Uuid(),
-        _monitor = monitor;
+        _monitor = monitor,
+        _remoteCache = remoteCache ?? const FlutterSecureStorage();
 
   final ApiClient _api;
   final LocalStore _queue;
@@ -73,8 +76,14 @@ class OfflineFirstRepository {
 
   /// مراقب حالة الاتصال (اختياري) — يُحدَّث بنتيجة كل طلب.
   final ConnectivityMonitor? _monitor;
+  final FlutterSecureStorage _remoteCache;
 
   LocalStore get queue => _queue;
+
+  String _purchasesCacheKey(String shopId) =>
+      'wizano.shop.cache.purchases.$shopId';
+  String _paymentsCacheKey(String shopId) =>
+      'wizano.shop.cache.payments.$shopId';
 
   /// هل الخطأ خطأ شبكة (يستحق الحفظ المحلي) أم خطأ منطقي (رفض الخادم)؟
   static bool _isNetworkFailure(Object error) =>
@@ -530,10 +539,20 @@ class OfflineFirstRepository {
   Future<List<Purchase>> listRemote(String shopId, {String? customerId}) async {
     try {
       final result = await _api.listPurchases(shopId, customerId: customerId);
+      // نحتفظ بآخر نسخة مؤكدة من الخادم، لا بالعمليات المعلقة فقط، كي يظهر
+      // سجل المشتريات السابق كاملًا عند فتح التطبيق دون إنترنت.
+      if (customerId == null) {
+        await _remoteCache.write(
+          key: _purchasesCacheKey(shopId),
+          value: jsonEncode(result.map(_purchaseJson).toList()),
+        );
+      }
       _report(null);
       return result;
     } catch (error) {
       _report(error);
+      final cached = await _readPurchaseCache(shopId, customerId: customerId);
+      if (cached.isNotEmpty) return cached;
       rethrow;
     }
   }
@@ -557,13 +576,88 @@ class OfflineFirstRepository {
   }) async {
     try {
       final result = await _api.listPayments(shopId, customerId: customerId);
+      if (customerId == null) {
+        await _remoteCache.write(
+          key: _paymentsCacheKey(shopId),
+          value: jsonEncode(result.map(_paymentJson).toList()),
+        );
+      }
       _report(null);
       return result;
     } catch (error) {
       _report(error);
+      final cached = await _readPaymentCache(shopId, customerId: customerId);
+      if (cached.isNotEmpty) return cached;
       rethrow;
     }
   }
+
+  Future<List<Purchase>> _readPurchaseCache(
+    String shopId, {
+    String? customerId,
+  }) async {
+    try {
+      final raw = await _remoteCache.read(key: _purchasesCacheKey(shopId));
+      if (raw == null) return const [];
+      final rows = jsonDecode(raw) as List<dynamic>;
+      final items = rows
+          .map((row) => Purchase.fromJson(row as Map<String, dynamic>))
+          .toList(growable: false);
+      return customerId == null
+          ? items
+          : items.where((item) => item.customerId == customerId).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<Payment>> _readPaymentCache(
+    String shopId, {
+    String? customerId,
+  }) async {
+    try {
+      final raw = await _remoteCache.read(key: _paymentsCacheKey(shopId));
+      if (raw == null) return const [];
+      final rows = jsonDecode(raw) as List<dynamic>;
+      final items = rows
+          .map((row) => Payment.fromJson(row as Map<String, dynamic>))
+          .toList(growable: false);
+      return customerId == null
+          ? items
+          : items.where((item) => item.customerId == customerId).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Map<String, dynamic> _purchaseJson(Purchase item) => {
+        'id': item.id,
+        'shopId': item.shopId,
+        'customerId': item.customerId,
+        'shopSeq': item.shopSeq,
+        'occurredAt': item.occurredAt,
+        'itemsText': item.itemsText,
+        'totalAmount': item.totalAmount,
+        'paidAmount': item.paidAmount,
+        'remainingAmount': item.remainingAmount,
+        'notes': item.notes,
+        'status': item.status,
+        'statusReason': item.statusReason,
+        'balanceAfter': item.balanceAfter,
+        'version': item.version,
+      };
+
+  Map<String, dynamic> _paymentJson(Payment item) => {
+        'id': item.id,
+        'shopId': item.shopId,
+        'customerId': item.customerId,
+        'purchaseId': item.purchaseId,
+        'amount': item.amount,
+        'paidAt': item.paidAt,
+        'shopSeq': item.shopSeq,
+        'notes': item.notes,
+        'balanceAfter': item.balanceAfter,
+      };
 
   /// المدفوعات المحلية المحفوظة (غير المرسلة بعد).
   Future<List<Payment>> listLocalPayments(

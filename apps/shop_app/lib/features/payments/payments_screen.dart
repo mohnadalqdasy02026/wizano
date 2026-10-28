@@ -110,7 +110,18 @@ class PaymentsScreen extends StatelessWidget {
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (context, i) {
                 final p = controller.payments[i];
-                return ListTile(
+                return TweenAnimationBuilder<double>(
+                  key: ValueKey(p.id),
+                  duration: const Duration(milliseconds: 260),
+                  tween: Tween(begin: 0, end: 1),
+                  builder: (_, value, child) => Opacity(
+                    opacity: value,
+                    child: Transform.translate(
+                      offset: Offset(0, 12 * (1 - value)),
+                      child: child,
+                    ),
+                  ),
+                  child: ListTile(
                   leading: CircleAvatar(
                     backgroundColor: WizanoColors.teal,
                     child: Text(
@@ -151,7 +162,8 @@ class PaymentsScreen extends StatelessWidget {
                       const Icon(Icons.chevron_left),
                     ],
                   ),
-                  onTap: () => _openDetails(context, p),
+                    onTap: () => _openDetails(context, p),
+                  ),
                 );
               },
             ),

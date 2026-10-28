@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -8,6 +9,37 @@ import 'package:http/http.dart' as http;
 
 const _apiBase = String.fromEnvironment('API_BASE_URL');
 const _storage = FlutterSecureStorage();
+const _shopsCacheKey = 'wizano.customer.cache.shops';
+
+String _statementCacheKey(String shopId) =>
+    'wizano.customer.cache.statement.$shopId';
+String _messagesCacheKey(String shopId) =>
+    'wizano.customer.cache.messages.$shopId';
+
+Future<void> _saveCache(String key, Object value) =>
+    _storage.write(key: key, value: jsonEncode(value));
+
+Future<Map<String, dynamic>?> _readMapCache(String key) async {
+  final raw = await _storage.read(key: key);
+  if (raw == null) return null;
+  try {
+    final decoded = jsonDecode(raw);
+    return decoded is Map<String, dynamic> ? decoded : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<List<dynamic>?> _readListCache(String key) async {
+  final raw = await _storage.read(key: key);
+  if (raw == null) return null;
+  try {
+    final decoded = jsonDecode(raw);
+    return decoded is List<dynamic> ? decoded : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 abstract final class CustomerColors {
   static const navy = Color(0xFF041B3A);
@@ -16,6 +48,38 @@ abstract final class CustomerColors {
   static const blue = Color(0xFF0878F9);
   static const gold = Color(0xFFFFC94A);
   static const background = Color(0xFFF2F7FF);
+}
+
+class OfflineNotice extends StatelessWidget {
+  const OfflineNotice({super.key, required this.visible});
+  final bool visible;
+
+  @override
+  Widget build(BuildContext context) => AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        child: visible
+            ? Container(
+                width: double.infinity,
+                color: const Color(0xFF34495E),
+                padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 16),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.cloud_off_rounded, color: Colors.white, size: 17),
+                    SizedBox(width: 7),
+                    Text(
+                      'غير متصل — يتم عرض آخر بيانات محفوظة',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : const SizedBox.shrink(),
+      );
 }
 
 void main() => runApp(const CustomerApp());
@@ -192,19 +256,44 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _shops = const [];
-  String? _error;
+  Timer? _poller;
+  bool _offline = false;
+
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _restoreCache();
+    _load();
+    _poller = Timer.periodic(const Duration(seconds: 25), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _restoreCache() async {
+    final cached = await _readListCache(_shopsCacheKey);
+    if (!mounted || cached == null) return;
+    setState(() => _shops = cached);
+  }
+
   Future<void> _load() async {
     try {
       final response = await http.get(Uri.parse('$_apiBase/api/v1/shops'), headers: {'authorization': 'Bearer ${widget.token}'}).timeout(const Duration(seconds: 12));
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode != 200) throw const FormatException();
+      final shops = (payload['data']?['items'] as List?) ?? const [];
+      await _saveCache(_shopsCacheKey, shops);
+      if (!mounted) return;
       setState(() {
-        _shops = (payload['data']?['items'] as List?) ?? const [];
-        _error = null;
+        _shops = shops;
+        _offline = false;
       });
-    } catch (_) { setState(() => _error = 'تعذر جلب المحلات المرتبطة بحسابك.'); }
+    } catch (_) {
+      if (mounted) setState(() => _offline = true);
+    }
   }
   Future<void> _logout() async { await _storage.deleteAll(); if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false); }
 
@@ -302,10 +391,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     ),
-    body: _error != null
-        ? Center(child: Text(_error!))
-        : _shops.isEmpty
-            ? const Center(child: Text('لا يوجد محل مرتبط. اطلب رمز دعوة من صاحب المحل.'))
+    body: Column(children: [
+      OfflineNotice(visible: _offline),
+      Expanded(
+        child: _shops.isEmpty
+            ? const Center(child: Text('لا توجد بيانات محفوظة. اتصل بالإنترنت أولًا لربط محل أو تحميل حسابك.'))
             : ListView(
                 padding: const EdgeInsets.all(18),
                 children: [
@@ -330,6 +420,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   )),
                 ],
               ),
+      ),
+    ]),
   );
 }
 
@@ -442,30 +534,53 @@ class StatementScreen extends StatefulWidget {
 
 class _StatementScreenState extends State<StatementScreen> {
   Map<String, dynamic>? _statement;
-  String? _error;
+  Timer? _poller;
+  bool _offline = false;
+
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _restoreCache();
+    _load();
+    _poller = Timer.periodic(const Duration(seconds: 15), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _restoreCache() async {
+    final cached = await _readMapCache(_statementCacheKey(widget.shopId));
+    if (mounted && cached != null) setState(() => _statement = cached);
+  }
+
   Future<void> _load() async {
     try {
       final response = await http.get(Uri.parse('$_apiBase/api/v1/shops/${widget.shopId}/my-statement'), headers: {'authorization': 'Bearer ${widget.token}'}).timeout(const Duration(seconds: 12));
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode != 200) throw const FormatException();
-      setState(() => _statement = payload['data'] as Map<String, dynamic>);
-    } catch (_) { setState(() => _error = 'تعذر جلب كشف الحساب.'); }
+      final statement = payload['data'] as Map<String, dynamic>;
+      await _saveCache(_statementCacheKey(widget.shopId), statement);
+      if (mounted) setState(() { _statement = statement; _offline = false; });
+    } catch (_) {
+      if (mounted) setState(() => _offline = true);
+    }
   }
   void _openMessages() {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => CustomerMessagesScreen(token: widget.token, shopId: widget.shopId, shopName: widget.shopName)));
   }
   @override
   Widget build(BuildContext context) {
-    if (_error != null) return Scaffold(appBar: AppBar(title: Text(widget.shopName), actions: [IconButton(tooltip: 'مراسلة المحل', onPressed: _openMessages, icon: const Icon(Icons.forum_rounded))]), body: Center(child: Text(_error!)));
     final statement = _statement;
-    if (statement == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (statement == null) return Scaffold(appBar: AppBar(title: Text(widget.shopName)), body: const Center(child: CircularProgressIndicator()));
     final entries = statement['entries'] as List<dynamic>? ?? const [];
     return Scaffold(
       appBar: AppBar(title: Text(widget.shopName), actions: [IconButton(tooltip: 'مراسلة المحل', onPressed: _openMessages, icon: const Icon(Icons.forum_rounded))]),
       body: Column(
         children: [
+          OfflineNotice(visible: _offline),
           Container(
             width: double.infinity,
             margin: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -478,16 +593,23 @@ class _StatementScreenState extends State<StatementScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('الرصيد المتبقي', style: TextStyle(color: Color(0xFFBBD7FF), fontWeight: FontWeight.w600)),
               const SizedBox(height: 7),
-              Text('${statement['balance']} ر.ي', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 29)),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 320),
+                transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: ScaleTransition(scale: animation, child: child)),
+                child: Text('${statement['balance']} ر.ي', key: ValueKey(statement['balance']), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 29)),
+              ),
               const SizedBox(height: 8),
               const Row(children: [Icon(Icons.verified_rounded, color: CustomerColors.teal, size: 18), SizedBox(width: 6), Text('كشف حساب محدّث من المحل', style: TextStyle(color: Colors.white70, fontSize: 12))]),
             ]),
           ),
           const Padding(padding: EdgeInsets.fromLTRB(20, 8, 20, 6), child: Align(alignment: Alignment.centerRight, child: Text('سجل العمليات', style: TextStyle(fontWeight: FontWeight.w900, color: CustomerColors.navy, fontSize: 17)))),
           Expanded(
-            child: entries.isEmpty
-                ? const Center(child: Text('لا توجد عمليات مسجلة حتى الآن'))
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              child: entries.isEmpty
+                ? const Center(key: ValueKey('empty'), child: Text('لا توجد عمليات مسجلة حتى الآن'))
                 : ListView.separated(
+                    key: ValueKey('entries-${entries.length}-${entries.isEmpty ? '' : (entries.last as Map<String, dynamic>)['id'] ?? ''}'),
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                     itemCount: entries.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 9),
@@ -508,6 +630,7 @@ class _StatementScreenState extends State<StatementScreen> {
                       );
                     },
                   ),
+            ),
           ),
         ],
       ),
@@ -526,14 +649,25 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
   final _message = TextEditingController();
   final _scroll = ScrollController();
   List<Map<String, dynamic>> _messages = const [];
-  String? _error;
+  Timer? _poller;
+  bool _offline = false;
   bool _loading = true;
   bool _sending = false;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _restoreCache();
+    _load();
+    _poller = Timer.periodic(const Duration(seconds: 7), (_) => _load());
+  }
   @override
-  void dispose() { _message.dispose(); _scroll.dispose(); super.dispose(); }
+  void dispose() { _poller?.cancel(); _message.dispose(); _scroll.dispose(); super.dispose(); }
+
+  Future<void> _restoreCache() async {
+    final cached = await _readListCache(_messagesCacheKey(widget.shopId));
+    if (mounted && cached != null) setState(() { _messages = cached.cast<Map<String, dynamic>>(); _loading = false; });
+  }
 
   Future<void> _load() async {
     try {
@@ -541,11 +675,13 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode != 200) throw const FormatException();
       final items = (payload['data'] as Map<String, dynamic>)['items'] as List<dynamic>? ?? const [];
+      await _saveCache(_messagesCacheKey(widget.shopId), items);
       if (!mounted) return;
-      setState(() { _messages = items.cast<Map<String, dynamic>>(); _error = null; _loading = false; });
-      _scrollToLatest();
+      final hadNewMessages = items.length > _messages.length;
+      setState(() { _messages = items.cast<Map<String, dynamic>>(); _offline = false; _loading = false; });
+      if (hadNewMessages) _scrollToLatest();
     } catch (_) {
-      if (mounted) setState(() { _error = 'تعذر تحميل المحادثة. تحقق من اتصال الإنترنت.'; _loading = false; });
+      if (mounted) setState(() { _offline = true; _loading = false; });
     }
   }
 
@@ -559,7 +695,9 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
       if (response.statusCode < 200 || response.statusCode >= 300) throw const FormatException();
       if (!mounted) return;
       _message.clear();
-      setState(() { _messages = [..._messages, (payload['data'] as Map<String, dynamic>)]; _sending = false; });
+      final messages = [..._messages, (payload['data'] as Map<String, dynamic>)];
+      await _saveCache(_messagesCacheKey(widget.shopId), messages);
+      setState(() { _messages = messages; _sending = false; _offline = false; });
       _scrollToLatest();
     } catch (_) {
       if (!mounted) return;
@@ -581,8 +719,9 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Column(mainAxisSize: MainAxisSize.min, children: [const Text('مراسلة المحل'), Text(widget.shopName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400))]), actions: [IconButton(tooltip: 'تحديث', onPressed: _loading ? null : _load, icon: const Icon(Icons.refresh_rounded))]),
+    appBar: AppBar(title: Column(mainAxisSize: MainAxisSize.min, children: [const Text('مراسلة المحل'), Text(widget.shopName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400))])),
     body: Column(children: [
+      OfflineNotice(visible: _offline),
       Expanded(child: _content()),
       SafeArea(top: false, child: Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
@@ -598,16 +737,20 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
 
   Widget _content() {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Text(_error!, textAlign: TextAlign.center), const SizedBox(height: 12), OutlinedButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_rounded), label: const Text('إعادة المحاولة'))])));
     if (_messages.isEmpty) return const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.forum_outlined, size: 48, color: CustomerColors.navy), SizedBox(height: 10), Text('ابدأ محادثتك مع المحل برسالة واضحة.')]));
-    return RefreshIndicator(onRefresh: _load, child: ListView.builder(
+    return ListView.builder(
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       itemCount: _messages.length,
       itemBuilder: (_, i) {
         final item = _messages[i];
         final mine = item['senderType'] == 'customer';
-        return Align(alignment: mine ? Alignment.centerRight : Alignment.centerLeft, child: Container(
+        return TweenAnimationBuilder<double>(
+          key: ValueKey(item['id']),
+          duration: const Duration(milliseconds: 280),
+          tween: Tween(begin: 0, end: 1),
+          builder: (_, value, child) => Opacity(opacity: value, child: Transform.translate(offset: Offset(0, 14 * (1 - value)), child: child)),
+          child: Align(alignment: mine ? Alignment.centerRight : Alignment.centerLeft, child: Container(
           constraints: const BoxConstraints(maxWidth: 310),
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 7),
@@ -617,8 +760,9 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
             const SizedBox(height: 4),
             Text(_time(item['createdAt']), style: TextStyle(fontSize: 10, color: mine ? Colors.white70 : const Color(0xFF6B7280))),
           ]),
-        ));
+        )),
+        );
       },
-    ));
+    );
   }
 }
