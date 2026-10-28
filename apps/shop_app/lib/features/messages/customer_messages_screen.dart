@@ -286,6 +286,7 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
         itemCount: _messages.length,
         itemBuilder: (context, index) {
           final message = _messages[index];
+          // في واجهة صاحب المحل: رسائله يسار ورسائل العميل يمين.
           final mine = message.isFromShop;
           return TweenAnimationBuilder<double>(
             key: ValueKey(message.id),
@@ -299,7 +300,7 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
               ),
             ),
             child: Align(
-              alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+              alignment: mine ? Alignment.centerLeft : Alignment.centerRight,
               child: Container(
               constraints: const BoxConstraints(maxWidth: 310),
               margin: const EdgeInsets.only(bottom: 10),
@@ -311,7 +312,7 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
               ),
               child: Column(
                 crossAxisAlignment:
-                    mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                    mine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
                 children: [
                   Text(
                     message.body,

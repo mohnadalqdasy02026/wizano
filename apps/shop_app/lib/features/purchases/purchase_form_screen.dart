@@ -50,6 +50,21 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
 
   void _recompute() => setState(() {});
 
+  void _showSpeechError(SpeechController speech) {
+    final message = speech.error;
+    if (!mounted || message == null || message.isEmpty) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(message),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    speech.clear();
+  }
+
   /// مسار اختبار E2E: مسار ملف صوتي محلي يُفكّ ترميزه مباشرةً.
   /// مُفعَّل فقط عند البناء مع dart-define باسم WIZANO_STT_TEST_WAV،
   /// فلا وجود له في البناءات العادية.
@@ -75,6 +90,7 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
             ? text
             : '${_items.text.trim()}\n$text';
       }
+      _showSpeechError(speech);
       setState(() {});
       return;
     }
@@ -87,6 +103,7 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
             ? text
             : '${_items.text.trim()}\n$text';
       }
+      _showSpeechError(speech);
       setState(() {});
       return;
     }
@@ -127,6 +144,7 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
     }
 
     await speech.startRecording();
+    _showSpeechError(speech);
     setState(() {});
   }
 
@@ -184,14 +202,6 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
                   ),
                 ],
               ],
-            ),
-          ),
-        if (speech.state == SpeechState.error && speech.error != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              speech.error!,
-              style: const TextStyle(color: Color(0xFFDC2626)),
             ),
           ),
       ],

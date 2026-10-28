@@ -24,6 +24,7 @@ dependencies:
   permission_handler: ^11.3.1
   archive: ^4.0.2
   flutter_secure_storage: ^10.3.4
+  just_audio: ^0.9.46
 
 # نستبدل حزمة web الخاصة بـ sherpa-onnx بنسخة محلية بلا أصول:
 # ملف WASM (14.4MB) كان يُضمَّن في حزمة أندرويد دون أي استخدام.

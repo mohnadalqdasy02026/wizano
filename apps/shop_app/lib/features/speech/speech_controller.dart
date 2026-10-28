@@ -58,9 +58,9 @@ class SpeechController extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('[WIZANO-STT] ensureModel failed: $e');
-      _error = e.toString();
-      _state = SpeechState.error;
-      notifyListeners();
+      // فحص النموذج عند تشغيل التطبيق استباقي فقط. لا نعرض خطأً أحمر
+      // للمستخدم قبل أن يضغط زر التسجيل؛ سيظهر الخطأ الواضح عند الطلب فقط.
+      // يبقى زر التسجيل قادرًا على إعادة محاولة تهيئة المحرك بنفسه.
     }
   }
 

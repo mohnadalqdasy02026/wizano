@@ -10,10 +10,13 @@ export type SenderType = "shop" | "customer";
 
 export interface MessageView {
   id: string;
-  body: string;
+  body: string | null;
   senderType: SenderType;
   createdAt: string;
   readAt: string | null;
+  audioBase64: string | null;
+  audioMimeType: string | null;
+  audioDurationMs: number | null;
 }
 
 async function requireLinkedCustomer(
@@ -42,6 +45,9 @@ function toMessageView(row: typeof customerMessages.$inferSelect): MessageView {
     senderType: row.senderType,
     createdAt: row.createdAt.toISOString(),
     readAt: row.readAt?.toISOString() ?? null,
+    audioBase64: row.audioBase64,
+    audioMimeType: row.audioMimeType,
+    audioDurationMs: row.audioDurationMs,
   };
 }
 
@@ -87,7 +93,10 @@ export async function sendMessage(
     customerId: string;
     senderUserId: string;
     senderType: SenderType;
-    body: string;
+    body?: string;
+    audioBase64?: string;
+    audioMimeType?: string;
+    audioDurationMs?: number;
   },
 ): Promise<MessageView> {
   await requireLinkedCustomer(db, input.shopId, input.customerId);

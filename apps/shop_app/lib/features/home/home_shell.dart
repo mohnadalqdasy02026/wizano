@@ -5,6 +5,7 @@ import '../../app/theme.dart';
 import '../../app/widgets.dart';
 import '../../core/connectivity.dart';
 import '../customers/customers_screen.dart';
+import '../messages/messages_screen.dart';
 import '../home/dashboard_screen.dart';
 import '../payments/payments_screen.dart';
 import '../profile/profile_screen.dart';
@@ -28,6 +29,7 @@ class _HomeShellState extends State<HomeShell> {
     CustomersScreen(),
     PurchasesScreen(),
     PaymentsScreen(),
+    MessagesScreen(),
     ProfileScreen(),
     SettingsScreen(),
   ];
@@ -37,11 +39,59 @@ class _HomeShellState extends State<HomeShell> {
     final offline = context.watch<ConnectivityMonitor>().offline;
 
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          if (offline) const OfflineStrip(),
-          Expanded(
-            child: IndexedStack(index: _index, children: _tabs),
+          IndexedStack(index: _index, children: _tabs),
+          Positioned(
+            right: 14,
+            bottom: 14,
+            child: AnimatedSlide(
+              duration: const Duration(milliseconds: 240),
+              offset: offline ? Offset.zero : const Offset(0, 1.5),
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: offline ? 1 : 0,
+                child: IgnorePointer(
+                  ignoring: !offline,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 13,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: WizanoColors.navy,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: .18),
+                          blurRadius: 14,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.cloud_off_rounded,
+                          size: 17,
+                          color: Colors.white,
+                        ),
+                        SizedBox(width: 7),
+                        Text(
+                          'وضع دون اتصال',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -66,8 +116,9 @@ class _HomeShellState extends State<HomeShell> {
               _AnimatedNavItem(index: 1, currentIndex: _index, icon: Icons.people_alt_rounded, label: 'العملاء', onTap: _select),
               _AnimatedNavItem(index: 2, currentIndex: _index, icon: Icons.receipt_long_rounded, label: 'المشتريات', onTap: _select),
               _AnimatedNavItem(index: 3, currentIndex: _index, icon: Icons.payments_rounded, label: 'المدفوعات', onTap: _select),
-              _AnimatedNavItem(index: 4, currentIndex: _index, icon: Icons.person_rounded, label: 'الملف', onTap: _select),
-              _AnimatedNavItem(index: 5, currentIndex: _index, icon: Icons.settings_rounded, label: 'الإعدادات', onTap: _select),
+              _AnimatedNavItem(index: 4, currentIndex: _index, icon: Icons.forum_rounded, label: 'الرسائل', onTap: _select),
+              _AnimatedNavItem(index: 5, currentIndex: _index, icon: Icons.person_rounded, label: 'الملف', onTap: _select),
+              _AnimatedNavItem(index: 6, currentIndex: _index, icon: Icons.settings_rounded, label: 'الإعدادات', onTap: _select),
             ],
           ),
         ),

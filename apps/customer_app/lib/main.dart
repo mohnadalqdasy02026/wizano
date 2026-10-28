@@ -82,6 +82,44 @@ class OfflineNotice extends StatelessWidget {
       );
 }
 
+class OfflineEmptyPanel extends StatelessWidget {
+  const OfflineEmptyPanel({super.key, required this.onRetry});
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset('assets/images/offline_sync.png', height: 170),
+              const SizedBox(height: 16),
+              const Text(
+                'أنت غير متصل بالإنترنت',
+                style: TextStyle(
+                  color: CustomerColors.navy,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 21,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'ستظهر آخر بياناتك المحفوظة تلقائيًا عند توفرها، وسيحاول التطبيق الاتصال فور عودة الشبكة.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Color(0xFF60738C), height: 1.55),
+              ),
+              const SizedBox(height: 18),
+              OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.wifi_find_rounded),
+                label: const Text('إعادة المحاولة'),
+              ),
+            ],
+          ),
+        ),
+      );
+
 void main() => runApp(const CustomerApp());
 
 class CustomerApp extends StatelessWidget {
@@ -254,7 +292,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<dynamic> _shops = const [];
   Timer? _poller;
   bool _offline = false;
@@ -262,15 +300,22 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _restoreCache();
     _load();
-    _poller = Timer.periodic(const Duration(seconds: 25), (_) => _load());
+    _poller = Timer.periodic(const Duration(seconds: 8), (_) => _load());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _poller?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
   }
 
   Future<void> _restoreCache() async {
@@ -395,7 +440,9 @@ class _HomeScreenState extends State<HomeScreen> {
       OfflineNotice(visible: _offline),
       Expanded(
         child: _shops.isEmpty
-            ? const Center(child: Text('لا توجد بيانات محفوظة. اتصل بالإنترنت أولًا لربط محل أو تحميل حسابك.'))
+            ? (_offline
+                ? OfflineEmptyPanel(onRetry: _load)
+                : const Center(child: CircularProgressIndicator()))
             : ListView(
                 padding: const EdgeInsets.all(18),
                 children: [
@@ -532,7 +579,8 @@ class StatementScreen extends StatefulWidget {
   State<StatementScreen> createState() => _StatementScreenState();
 }
 
-class _StatementScreenState extends State<StatementScreen> {
+class _StatementScreenState extends State<StatementScreen>
+    with WidgetsBindingObserver {
   Map<String, dynamic>? _statement;
   Timer? _poller;
   bool _offline = false;
@@ -540,15 +588,22 @@ class _StatementScreenState extends State<StatementScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _restoreCache();
     _load();
-    _poller = Timer.periodic(const Duration(seconds: 15), (_) => _load());
+    _poller = Timer.periodic(const Duration(seconds: 8), (_) => _load());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _poller?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
   }
 
   Future<void> _restoreCache() async {
@@ -574,7 +629,14 @@ class _StatementScreenState extends State<StatementScreen> {
   @override
   Widget build(BuildContext context) {
     final statement = _statement;
-    if (statement == null) return Scaffold(appBar: AppBar(title: Text(widget.shopName)), body: const Center(child: CircularProgressIndicator()));
+    if (statement == null) {
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.shopName)),
+        body: _offline
+            ? OfflineEmptyPanel(onRetry: _load)
+            : const Center(child: CircularProgressIndicator()),
+      );
+    }
     final entries = statement['entries'] as List<dynamic>? ?? const [];
     return Scaffold(
       appBar: AppBar(title: Text(widget.shopName), actions: [IconButton(tooltip: 'مراسلة المحل', onPressed: _openMessages, icon: const Icon(Icons.forum_rounded))]),
@@ -645,7 +707,8 @@ class CustomerMessagesScreen extends StatefulWidget {
   State<CustomerMessagesScreen> createState() => _CustomerMessagesScreenState();
 }
 
-class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
+class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
+    with WidgetsBindingObserver {
   final _message = TextEditingController();
   final _scroll = ScrollController();
   List<Map<String, dynamic>> _messages = const [];
@@ -657,12 +720,18 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _restoreCache();
     _load();
     _poller = Timer.periodic(const Duration(seconds: 7), (_) => _load());
   }
   @override
-  void dispose() { _poller?.cancel(); _message.dispose(); _scroll.dispose(); super.dispose(); }
+  void dispose() { WidgetsBinding.instance.removeObserver(this); _poller?.cancel(); _message.dispose(); _scroll.dispose(); super.dispose(); }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
+  }
 
   Future<void> _restoreCache() async {
     final cached = await _readListCache(_messagesCacheKey(widget.shopId));
@@ -737,7 +806,11 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
 
   Widget _content() {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_messages.isEmpty) return const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.forum_outlined, size: 48, color: CustomerColors.navy), SizedBox(height: 10), Text('ابدأ محادثتك مع المحل برسالة واضحة.')]));
+    if (_messages.isEmpty) {
+      return _offline
+          ? OfflineEmptyPanel(onRetry: _load)
+          : const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.forum_outlined, size: 48, color: CustomerColors.navy), SizedBox(height: 10), Text('ابدأ محادثتك مع المحل برسالة واضحة.')]));
+    }
     return ListView.builder(
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),

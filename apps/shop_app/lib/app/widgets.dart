@@ -194,6 +194,49 @@ class OfflineStrip extends StatelessWidget {
   }
 }
 
+/// واجهة انقطاع كاملة عندما لا توجد أي بيانات محلية لعرضها بعد.
+class OfflineEmptyState extends StatelessWidget {
+  const OfflineEmptyState({super.key, this.onRetry});
+
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset('assets/images/offline_sync.png', height: 155),
+              const SizedBox(height: 16),
+              const Text(
+                'لا يوجد اتصال بالإنترنت',
+                style: TextStyle(
+                  color: WizanoColors.navy,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'يمكنك متابعة العمل بالبيانات المحفوظة، وستتم المزامنة تلقائيًا عند عودة الشبكة.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: WizanoColors.textMuted, height: 1.5),
+              ),
+              if (onRetry != null) ...[
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.wifi_find_rounded),
+                  label: const Text('محاولة الاتصال'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+}
+
 /// حالة تحميل موحّدة.
 class LoadingState extends StatelessWidget {
   const LoadingState({super.key, this.message = 'جارٍ التحميل...'});

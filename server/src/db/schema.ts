@@ -314,7 +314,11 @@ export const customerMessages = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     senderType: messageSenderTypeEnum("sender_type").notNull(),
-    body: text("body").notNull(),
+    body: text("body"),
+    // تجريبي: ملف صوت قصير بصيغة base64. يُستبدل بتخزين ملفات عند نقل الاستضافة.
+    audioBase64: text("audio_base64"),
+    audioMimeType: varchar("audio_mime_type", { length: 80 }),
+    audioDurationMs: integer("audio_duration_ms"),
     readAt: timestamp("read_at", { withTimezone: true }),
     createdAt: createdAt(),
   },

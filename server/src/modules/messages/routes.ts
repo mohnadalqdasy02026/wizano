@@ -77,6 +77,9 @@ export async function registerMessageRoutes(
           senderUserId: actor.userId,
           senderType: actor.senderType,
           body: body.body,
+          audioBase64: body.audioBase64,
+          audioMimeType: body.audioMimeType,
+          audioDurationMs: body.audioDurationMs,
         }),
       };
     },
@@ -120,6 +123,9 @@ export async function registerMessageRoutes(
           senderUserId: auth.userId,
           senderType: "customer",
           body: body.body,
+          audioBase64: body.audioBase64,
+          audioMimeType: body.audioMimeType,
+          audioDurationMs: body.audioDurationMs,
         }),
       };
     },

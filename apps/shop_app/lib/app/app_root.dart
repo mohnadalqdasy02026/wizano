@@ -45,7 +45,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     // مزامنة صامتة متكررة: لا يحتاج صاحب المحل لسحب الشاشة أو فتح صفحة
     // المزامنة كي تصل عملياته المحفوظة محليًا إلى الخادم أو تظهر التحديثات.
     _backgroundSync = Timer.periodic(
-      const Duration(seconds: 20),
+      const Duration(seconds: 8),
       (_) => _refreshSilently(),
     );
   }
