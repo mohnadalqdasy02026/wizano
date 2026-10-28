@@ -19,6 +19,14 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+// بعض الحزم الخارجية ما زالت تُترجم بإعداد Java 8. التحذير لا يخص كود
+// التطبيق ولا يؤثر على APK؛ نُخفيه ليبقى سجل البناء نظيفًا.
+subprojects {
+    tasks.withType<JavaCompile>().configureEach {
+        options.compilerArgs.add("-Xlint:-options")
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

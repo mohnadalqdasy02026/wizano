@@ -7,7 +7,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-const _apiBase = String.fromEnvironment('API_BASE_URL');
+// يبقى التطبيق متصلًا حتى إن نُسي dart-define وقت البناء.
+const _apiBase = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'https://wizano-api.onrender.com',
+);
 const _storage = FlutterSecureStorage();
 const _shopsCacheKey = 'wizano.customer.cache.shops';
 
@@ -190,7 +194,7 @@ class SessionGate extends StatelessWidget {
             headers: const {'content-type': 'application/json'},
             body: jsonEncode({'refreshToken': refresh}),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
       if (response.statusCode != 200) return access;
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       final tokens = payload['data']?['tokens'] as Map<String, dynamic>?;
@@ -239,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final code = _invitationCodeFrom(_invitationCode.text);
       if (code.isEmpty) { setState(() => _error = 'أدخل رمز أو رابط الدعوة.'); return; }
-      final response = await http.post(Uri.parse('$_apiBase/api/v1/customer-invitations/access'), headers: const {'content-type': 'application/json'}, body: jsonEncode({'code': code})).timeout(const Duration(seconds: 12));
+      final response = await http.post(Uri.parse('$_apiBase/api/v1/customer-invitations/access'), headers: const {'content-type': 'application/json'}, body: jsonEncode({'code': code})).timeout(const Duration(seconds: 30));
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       final tokens = payload['data']?['tokens'] as Map<String, dynamic>?;
       final access = tokens?['accessToken'] as String?;
@@ -355,9 +359,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _load() async {
     try {
-      final response = await http.get(Uri.parse('$_apiBase/api/v1/shops'), headers: {'authorization': 'Bearer ${widget.token}'}).timeout(const Duration(seconds: 12));
+      final response = await http.get(Uri.parse('$_apiBase/api/v1/shops'), headers: {'authorization': 'Bearer ${widget.token}'}).timeout(const Duration(seconds: 30));
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode != 200) throw const FormatException();
+      if (response.statusCode != 200) {
+        // انتهاء جلسة أو استجابة خادم ليسا انقطاع إنترنت. لا نعرض حالة
+        // أوفلاين مضللة بينما الجهاز متصل فعليًا.
+        if (mounted) setState(() => _offline = false);
+        return;
+      }
       final shops = (payload['data']?['items'] as List?) ?? const [];
       await _saveCache(_shopsCacheKey, shops);
       if (!mounted) return;
@@ -642,7 +651,7 @@ class _StatementScreenState extends State<StatementScreen>
 
   Future<void> _load() async {
     try {
-      final response = await http.get(Uri.parse('$_apiBase/api/v1/shops/${widget.shopId}/my-statement'), headers: {'authorization': 'Bearer ${widget.token}'}).timeout(const Duration(seconds: 12));
+      final response = await http.get(Uri.parse('$_apiBase/api/v1/shops/${widget.shopId}/my-statement'), headers: {'authorization': 'Bearer ${widget.token}'}).timeout(const Duration(seconds: 30));
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode != 200) throw const FormatException();
       final statement = payload['data'] as Map<String, dynamic>;
@@ -666,7 +675,10 @@ class _StatementScreenState extends State<StatementScreen>
             : const Center(child: CircularProgressIndicator()),
       );
     }
-    final entries = statement['entries'] as List<dynamic>? ?? const [];
+    // الأحدث أولًا مثل تطبيقات المحادثة/الحسابات الحديثة.
+    final entries = (statement['entries'] as List<dynamic>? ?? const [])
+        .reversed
+        .toList(growable: false);
     return Scaffold(
       appBar: AppBar(title: Text(widget.shopName), actions: [IconButton(tooltip: 'مراسلة المحل', onPressed: _openMessages, icon: const Icon(Icons.forum_rounded))]),
       body: Column(
@@ -769,14 +781,20 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
 
   Future<void> _load() async {
     try {
-      final response = await http.get(Uri.parse('$_apiBase/api/v1/shops/${widget.shopId}/my-messages'), headers: {'authorization': 'Bearer ${widget.token}'}).timeout(const Duration(seconds: 12));
+      await _flushPending();
+      final response = await http.get(Uri.parse('$_apiBase/api/v1/shops/${widget.shopId}/my-messages'), headers: {'authorization': 'Bearer ${widget.token}'}).timeout(const Duration(seconds: 30));
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode != 200) throw const FormatException();
+      if (response.statusCode != 200) {
+        if (mounted) setState(() { _offline = false; _loading = false; });
+        return;
+      }
       final items = (payload['data'] as Map<String, dynamic>)['items'] as List<dynamic>? ?? const [];
-      await _saveCache(_messagesCacheKey(widget.shopId), items);
+      final pending = _messages.where((item) => item['pending'] == true).toList();
+      final merged = [...items.cast<Map<String, dynamic>>(), ...pending];
+      await _saveCache(_messagesCacheKey(widget.shopId), merged);
       if (!mounted) return;
-      final hadNewMessages = items.length > _messages.length;
-      setState(() { _messages = items.cast<Map<String, dynamic>>(); _offline = false; _loading = false; });
+      final hadNewMessages = merged.length > _messages.length;
+      setState(() { _messages = merged; _offline = false; _loading = false; });
       if (hadNewMessages) _scrollToLatest();
     } catch (_) {
       if (mounted) setState(() { _offline = true; _loading = false; });
@@ -799,9 +817,38 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
       _scrollToLatest();
     } catch (_) {
       if (!mounted) return;
-      setState(() => _sending = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر إرسال الرسالة. حاول مجددًا.')));
+      final local = <String, dynamic>{
+        'id': 'local-${DateTime.now().microsecondsSinceEpoch}',
+        'body': body,
+        'senderType': 'customer',
+        'createdAt': DateTime.now().toUtc().toIso8601String(),
+        'pending': true,
+      };
+      _message.clear();
+      final messages = [..._messages, local];
+      await _saveCache(_messagesCacheKey(widget.shopId), messages);
+      setState(() { _messages = messages; _sending = false; _offline = true; });
+      _scrollToLatest();
     }
+  }
+
+  Future<void> _flushPending() async {
+    final pending = _messages.where((item) => item['pending'] == true).toList();
+    if (pending.isEmpty) return;
+    var updated = List<Map<String, dynamic>>.from(_messages);
+    for (final item in pending) {
+      try {
+        final response = await http.post(Uri.parse('$_apiBase/api/v1/shops/${widget.shopId}/my-messages'), headers: {'authorization': 'Bearer ${widget.token}', 'content-type': 'application/json'}, body: jsonEncode({'body': item['body']})).timeout(const Duration(seconds: 8));
+        if (response.statusCode < 200 || response.statusCode >= 300) continue;
+        final payload = jsonDecode(response.body) as Map<String, dynamic>;
+        final sent = payload['data'] as Map<String, dynamic>;
+        updated = [for (final current in updated) if (current['id'] == item['id']) sent else current];
+      } catch (_) {
+        break;
+      }
+    }
+    if (mounted) setState(() => _messages = updated);
+    await _saveCache(_messagesCacheKey(widget.shopId), updated);
   }
 
   void _scrollToLatest() {
@@ -862,6 +909,7 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
             Text(item['body']?.toString() ?? '', style: TextStyle(color: mine ? Colors.white : const Color(0xFF1F2933))),
             const SizedBox(height: 4),
             Text(_time(item['createdAt']), style: TextStyle(fontSize: 10, color: mine ? Colors.white70 : const Color(0xFF6B7280))),
+            if (item['pending'] == true) const Padding(padding: EdgeInsets.only(top: 3), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.error_outline_rounded, color: Color(0xFFE53935), size: 14), SizedBox(width: 4), Text('لم تُرسل', style: TextStyle(fontSize: 10, color: Color(0xFFE53935), fontWeight: FontWeight.w700))])),
           ]),
         )),
         );

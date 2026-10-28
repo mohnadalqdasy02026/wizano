@@ -83,21 +83,25 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
               'senderType': message.senderType,
               'createdAt': message.createdAt,
               'readAt': message.readAt,
+              'pending': message.pending,
             },
         ]),
       );
 
   Future<void> _load() async {
     try {
+      await _flushPending();
       final messages = await context.read<ApiClient>().listCustomerMessages(
             widget.shopId,
             widget.customerId,
           );
       if (!mounted) return;
-      final receivedNew = messages.length > _messages.length;
-      await _cacheMessages(messages);
+      final pending = _messages.where((message) => message.pending).toList();
+      final merged = [...messages, ...pending];
+      final receivedNew = merged.length > _messages.length;
+      await _cacheMessages(merged);
       setState(() {
-        _messages = messages;
+        _messages = merged;
         _error = null;
         _loading = false;
         _offline = false;
@@ -137,11 +141,42 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
       _scrollToLatest();
     } catch (_) {
       if (!mounted) return;
-      setState(() => _sending = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر إرسال الرسالة. حاول مرة أخرى.')),
+      final local = ConversationMessage(
+        id: 'local-${DateTime.now().microsecondsSinceEpoch}',
+        body: body,
+        senderType: 'shop',
+        createdAt: DateTime.now().toUtc().toIso8601String(),
+        pending: true,
       );
+      _textController.clear();
+      setState(() {
+        _messages = [..._messages, local];
+        _sending = false;
+        _offline = true;
+      });
+      await _cacheMessages(_messages);
+      _scrollToLatest();
     }
+  }
+
+  Future<void> _flushPending() async {
+    final pending = _messages.where((message) => message.pending).toList();
+    if (pending.isEmpty) return;
+    var updated = List<ConversationMessage>.from(_messages);
+    for (final message in pending) {
+      try {
+        final sent = await context.read<ApiClient>().sendCustomerMessage(
+              widget.shopId,
+              widget.customerId,
+              message.body,
+            );
+        updated = [for (final current in updated) if (current.id == message.id) sent else current];
+      } catch (_) {
+        break;
+      }
+    }
+    if (mounted) setState(() => _messages = updated);
+    await _cacheMessages(updated);
   }
 
   void _scrollToLatest() {
@@ -326,6 +361,18 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen> {
                       color: mine ? Colors.white70 : WizanoColors.textMuted,
                     ),
                   ),
+                  if (message.pending)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 3),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.error_outline_rounded, color: WizanoColors.error, size: 14),
+                          SizedBox(width: 4),
+                          Text('لم تُرسل', style: TextStyle(fontSize: 10, color: WizanoColors.error, fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
                 ],
               ),
               ),

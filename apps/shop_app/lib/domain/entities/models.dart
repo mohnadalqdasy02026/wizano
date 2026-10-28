@@ -484,6 +484,7 @@ class ConversationMessage {
     required this.senderType,
     required this.createdAt,
     this.readAt,
+    this.pending = false,
   });
 
   final String id;
@@ -491,6 +492,7 @@ class ConversationMessage {
   final String senderType;
   final String createdAt;
   final String? readAt;
+  final bool pending;
 
   bool get isFromShop => senderType == 'shop';
 
@@ -501,6 +503,7 @@ class ConversationMessage {
         senderType: json['senderType'] as String,
         createdAt: json['createdAt'] as String,
         readAt: json['readAt'] as String?,
+        pending: json['pending'] as bool? ?? false,
       );
 }
 

@@ -78,18 +78,52 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
     await speech.setShopTerms(purchases.map((p) => p.itemsText));
   }
 
+  /// لا نضع نص التعرف في عملية مالية تلقائيًا؛ يجب أن يراجعه صاحب المحل.
+  Future<void> _reviewSpeechText(SpeechController speech) async {
+    final recognized = speech.text.trim();
+    if (recognized.isEmpty || !mounted) return;
+    final editor = TextEditingController(text: recognized);
+    final accepted = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('راجع النص قبل إضافته'),
+        content: TextField(
+          controller: editor,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 7,
+          decoration: const InputDecoration(
+            hintText: 'عدّل النص إذا لزم قبل الاعتماد',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(editor.text.trim()),
+            child: const Text('اعتماد النص'),
+          ),
+        ],
+      ),
+    );
+    editor.dispose();
+    if (accepted == null || accepted.isEmpty || !mounted) return;
+    _items.text = _items.text.trim().isEmpty
+        ? accepted
+        : '${_items.text.trim()}\n$accepted';
+    speech.clear();
+    setState(() {});
+  }
+
   Future<void> _onMicPressed() async {
     final speech = context.read<SpeechController>();
     await _syncVocabulary(speech);
 
     if (_sttTestWav.isNotEmpty) {
       await speech.transcribePath(_sttTestWav);
-      final text = speech.text;
-      if (text.isNotEmpty) {
-        _items.text = _items.text.trim().isEmpty
-            ? text
-            : '${_items.text.trim()}\n$text';
-      }
+      await _reviewSpeechText(speech);
       _showSpeechError(speech);
       setState(() {});
       return;
@@ -97,12 +131,7 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
 
     if (speech.state == SpeechState.recording) {
       await speech.stopAndTranscribe();
-      final text = speech.text;
-      if (text.isNotEmpty) {
-        _items.text = _items.text.trim().isEmpty
-            ? text
-            : '${_items.text.trim()}\n$text';
-      }
+      await _reviewSpeechText(speech);
       _showSpeechError(speech);
       setState(() {});
       return;
