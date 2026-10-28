@@ -89,15 +89,16 @@ class CustomerController extends ChangeNotifier {
   }) async {
     if (_shopId == null) return 'لا يوجد محل نشط.';
     try {
-      final created = await _api.createCustomer(
-        _shopId!,
+      final outcome = await _repository.createCustomer(
+        shopId: _shopId!,
         displayName: displayName,
         phone: phone,
         notes: notes,
       );
+      final created = outcome.value;
+      if (created == null) return outcome.error ?? 'تعذر إضافة العميل.';
       _customers = [..._customers, created]
         ..sort((a, b) => a.displayName.compareTo(b.displayName));
-      await _repository.cacheCustomer(_shopId!, created);
       notifyListeners();
       return null;
     } on ApiException catch (e) {

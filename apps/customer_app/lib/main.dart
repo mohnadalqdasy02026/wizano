@@ -119,6 +119,7 @@ class OfflineEmptyPanel extends StatelessWidget {
           ),
         ),
       );
+}
 
 void main() => runApp(const CustomerApp());
 
@@ -177,9 +178,37 @@ bool get _apiConfigured {
 class SessionGate extends StatelessWidget {
   const SessionGate({super.key});
 
+  Future<String?> _restoreSession() async {
+    final access = await _storage.read(key: 'wizano.customer.access');
+    final refresh = await _storage.read(key: 'wizano.customer.refresh');
+    if (access == null) return null;
+    if (refresh == null || !_apiConfigured) return access;
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_apiBase/api/v1/auth/refresh'),
+            headers: const {'content-type': 'application/json'},
+            body: jsonEncode({'refreshToken': refresh}),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return access;
+      final payload = jsonDecode(response.body) as Map<String, dynamic>;
+      final tokens = payload['data']?['tokens'] as Map<String, dynamic>?;
+      final newAccess = tokens?['accessToken'] as String?;
+      final newRefresh = tokens?['refreshToken'] as String?;
+      if (newAccess == null || newRefresh == null) return access;
+      await _storage.write(key: 'wizano.customer.access', value: newAccess);
+      await _storage.write(key: 'wizano.customer.refresh', value: newRefresh);
+      return newAccess;
+    } catch (_) {
+      // دون اتصال: نستخدم آخر رمز ونعرض البيانات المحفوظة محليًا.
+      return access;
+    }
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<String?>(
-        future: _storage.read(key: 'wizano.customer.access'),
+        future: _restoreSession(),
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -823,6 +852,7 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
           duration: const Duration(milliseconds: 280),
           tween: Tween(begin: 0, end: 1),
           builder: (_, value, child) => Opacity(opacity: value, child: Transform.translate(offset: Offset(0, 14 * (1 - value)), child: child)),
+          // في تطبيق العميل: رسائل العميل يمين، ورسائل صاحب المحل يسار.
           child: Align(alignment: mine ? Alignment.centerRight : Alignment.centerLeft, child: Container(
           constraints: const BoxConstraints(maxWidth: 310),
           margin: const EdgeInsets.only(bottom: 10),

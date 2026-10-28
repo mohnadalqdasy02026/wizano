@@ -299,6 +299,58 @@ class OfflineFirstRepository {
     await _queue.replaceCustomers(shopId, updated);
   }
 
+  /// إضافة عميل تعمل دون اتصال: يحفظ العميل وطلب إنشائه محليًا ثم يرسله
+  /// تلقائيًا عند عودة الشبكة. المعرّف يولد على الهاتف ليبقى مرجع العمليات.
+  Future<OperationOutcome<Customer>> createCustomer({
+    required String shopId,
+    required String displayName,
+    String? phone,
+    String? notes,
+  }) async {
+    final id = _uuid.v7();
+    final payload = <String, dynamic>{
+      'id': id,
+      'displayName': displayName,
+      if (phone != null) 'phone': phone,
+      if (notes != null) 'notes': notes,
+    };
+    try {
+      final customer = await _api.createCustomer(
+        shopId,
+        id: id,
+        displayName: displayName,
+        phone: phone,
+        notes: notes,
+      );
+      await cacheCustomer(shopId, customer);
+      _report(null);
+      return OperationOutcome.success(customer);
+    } catch (error) {
+      _report(error);
+      if (!_isNetworkFailure(error)) {
+        return OperationOutcome.failure(
+          error is ApiException ? error.message : 'تعذر إضافة العميل.',
+        );
+      }
+      final customer = Customer(
+        id: id,
+        displayName: displayName,
+        phone: phone,
+        notes: notes,
+      );
+      await _queue.enqueue(
+        id: id,
+        opType: LocalOpType.customer,
+        shopId: shopId,
+        customerId: id,
+        idempotencyKey: id,
+        payload: payload,
+      );
+      await cacheCustomer(shopId, customer);
+      return OperationOutcome.local(customer);
+    }
+  }
+
   /// أقصى عدد محاولات لعملية واحدة قبل التوقف عن إعادة الإرسال.
   static const int maxAttempts = 5;
 
@@ -510,6 +562,14 @@ class OfflineFirstRepository {
   /// يرسل عملية واحدة من الطابور إلى الخادم.
   Future<void> _send(QueuedOperation op) async {    final payload = op.payload;
     switch (op.opType) {
+      case LocalOpType.customer:
+        await _api.createCustomer(
+          op.shopId,
+          id: op.id,
+          displayName: payload['displayName']! as String,
+          phone: payload['phone'] as String?,
+          notes: payload['notes'] as String?,
+        );
       case LocalOpType.purchase:
         await _api.createPurchase(
           op.shopId,

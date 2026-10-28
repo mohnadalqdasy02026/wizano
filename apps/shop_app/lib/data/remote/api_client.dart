@@ -208,6 +208,7 @@ class ApiClient {
 
   Future<Customer> createCustomer(
     String shopId, {
+    String? id,
     required String displayName,
     String? phone,
     String? notes,
@@ -216,6 +217,7 @@ class ApiClient {
       method: 'POST',
       path: '/shops/$shopId/customers',
       body: {
+        if (id != null) 'id': id,
         'displayName': displayName,
         if (phone != null) 'phone': phone,
         if (notes != null) 'notes': notes,

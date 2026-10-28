@@ -42,20 +42,24 @@ extension SyncStatusX on SyncStatus {
 }
 
 /// نوع العملية في الطابور المحلي.
-enum LocalOpType { purchase, payment }
+enum LocalOpType { customer, purchase, payment }
 
 extension LocalOpTypeX on LocalOpType {
   String get wire => switch (this) {
+        LocalOpType.customer => 'customer',
         LocalOpType.purchase => 'purchase',
         LocalOpType.payment => 'payment',
       };
 
   String get label => switch (this) {
+        LocalOpType.customer => 'عميل',
         LocalOpType.purchase => 'مشتريات',
         LocalOpType.payment => 'مدفوعات',
       };
 
-  static LocalOpType fromWire(String value) => value == 'payment'
-      ? LocalOpType.payment
-      : LocalOpType.purchase;
+  static LocalOpType fromWire(String value) => switch (value) {
+        'customer' => LocalOpType.customer,
+        'payment' => LocalOpType.payment,
+        _ => LocalOpType.purchase,
+      };
 }
