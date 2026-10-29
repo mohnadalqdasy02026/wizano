@@ -42,7 +42,8 @@ class ApiClient {
   final String baseUrl;
 
   // Render المجاني قد يحتاج وقتًا للاستيقاظ بعد الخمول؛ لا نعتبر ذلك انقطاعًا.
-  static const Duration _timeout = Duration(seconds: 30);
+  // خدمة Render المجانية تستيقظ بعد الخمول وقد تحتاج أكثر من 30 ثانية.
+  static const Duration _timeout = Duration(seconds: 55);
 
   Uri _uri(String path) => Uri.parse('$baseUrl/api/v1$path');
 

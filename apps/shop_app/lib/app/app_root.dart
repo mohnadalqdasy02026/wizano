@@ -14,6 +14,8 @@ import '../features/purchases/purchase_controller.dart';
 import '../features/shop/shop_controller.dart';
 import '../features/shop/shop_setup_screen.dart';
 import '../features/sync/sync_controller.dart';
+import '../core/connectivity.dart';
+import '../data/remote/api_client.dart';
 
 /// الجذر: يوجّه تلقائيًا حسب حالة الجلسة والمحل.
 ///
@@ -37,6 +39,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   String? _syncShopId;
   Timer? _backgroundSync;
   bool _refreshing = false;
+  bool _checkingConnection = false;
 
   @override
   void initState() {
@@ -48,6 +51,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       const Duration(seconds: 8),
       (_) => _refreshSilently(),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkConnection());
   }
 
   @override
@@ -59,6 +63,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
   Future<void> _refreshSilently() async {
     if (!mounted || _refreshing) return;
+    await _checkConnection();
     final sync = context.read<SyncController>();
     if (sync.shopId == null) return;
     _refreshing = true;
@@ -72,6 +77,29 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       ]);
     } finally {
       _refreshing = false;
+    }
+  }
+
+  /// لا نترك شارة «دون اتصال» معلقة بسبب طلب قديم فشل مرة واحدة.
+  /// فحص الصحة هو المصدر الحقيقي للحالة: إن كان الخادم وقاعدة البيانات
+  /// قابلين للوصول نعلن الاتصال حتى لو بقيت عملية معينة تحتاج إعادة محاولة.
+  Future<void> _checkConnection() async {
+    // لا نسمح بفحوصات متداخلة: على Render المجاني قد يتأخر طلب قديم
+    // بسبب إيقاظ الخدمة، ثم يصل بعد فحص أحدث ناجح ويحوّل الحالة خطأً إلى
+    // «دون اتصال».
+    if (!mounted || _checkingConnection) return;
+    _checkingConnection = true;
+    try {
+      final health = await context.read<ApiClient>().getHealth();
+      if (!mounted) return;
+      final monitor = context.read<ConnectivityMonitor>();
+      if (health.isReachable) {
+        monitor.reportOnline();
+      } else {
+        monitor.reportOffline();
+      }
+    } finally {
+      _checkingConnection = false;
     }
   }
 
