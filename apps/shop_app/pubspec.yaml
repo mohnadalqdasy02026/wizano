@@ -1,7 +1,7 @@
 name: shop_app
 description: "WIZANO | وزانو — تطبيق صاحب المحل لإدارة الديون والمشتريات والمدفوعات"
 publish_to: 'none'
-version: 0.2.2+14
+version: 0.2.3+15
 
 environment:
   sdk: ^3.9.2
