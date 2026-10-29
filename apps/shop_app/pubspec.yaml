@@ -1,7 +1,7 @@
 name: shop_app
 description: "WIZANO | وزانو — تطبيق صاحب المحل لإدارة الديون والمشتريات والمدفوعات"
 publish_to: 'none'
-version: 0.1.9+11
+version: 0.2.1+13
 
 environment:
   sdk: ^3.9.2
@@ -25,6 +25,8 @@ dependencies:
   archive: ^4.0.2
   flutter_secure_storage: ^10.3.4
   just_audio: ^0.9.46
+  pdf: ^3.11.3
+  printing: ^5.13.4
 
 # نستبدل حزمة web الخاصة بـ sherpa-onnx بنسخة محلية بلا أصول:
 # ملف WASM (14.4MB) كان يُضمَّن في حزمة أندرويد دون أي استخدام.
@@ -42,3 +44,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/fonts/

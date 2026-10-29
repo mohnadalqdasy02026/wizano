@@ -135,6 +135,14 @@ class ApiClient {
     }
   }
 
+  Future<void> deleteAccount(String password) async {
+    await _send(
+      method: 'DELETE',
+      path: '/auth/account',
+      body: {'password': password},
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // المحلات
   // ---------------------------------------------------------------------------

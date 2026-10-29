@@ -3,7 +3,7 @@
 
 import { and, eq, isNull } from "drizzle-orm";
 import type { Database } from "../../db/index.js";
-import { refreshTokens as refreshTokensTable, shops, shopMembers, users } from "../../db/schema.js";
+import { customerUserLinks, refreshTokens as refreshTokensTable, shops, shopMembers, users } from "../../db/schema.js";
 import { conflict, notFound, unauthorized } from "../../common/errors.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import {
@@ -267,6 +267,36 @@ export async function logoutUser(
   if (result.length === 0) {
     throw notFound("رمز تجديد فعّال غير موجود.");
   }
+}
+
+/// تعطيل الحساب مع إخفاء بياناته الشخصية، دون حذف السجل المالي للمحل.
+/// تبقى المعرّفات الداخلية في القيود وسجل التدقيق حتى لا ينكسر تاريخ الحسابات.
+export async function deleteAccount(
+  db: Database,
+  userId: string,
+  password: string,
+): Promise<void> {
+  const rows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const user = rows[0];
+  if (!user || user.status !== "active") throw unauthorized("الحساب غير متاح.");
+  if (!await verifyPassword(password, user.passwordHash)) {
+    throw unauthorized("كلمة المرور غير صحيحة.");
+  }
+
+  const replacementHash = await hashPassword(`deleted-${crypto.randomUUID()}-${Date.now()}`);
+  await db.transaction(async (tx) => {
+    await tx.update(refreshTokensTable)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(refreshTokensTable.userId, userId), isNull(refreshTokensTable.revokedAt)));
+    await tx.delete(customerUserLinks).where(eq(customerUserLinks.userId, userId));
+    await tx.update(users).set({
+      displayName: "حساب محذوف",
+      email: null,
+      phone: null,
+      passwordHash: replacementHash,
+      status: "disabled",
+    }).where(eq(users.id, userId));
+  });
 }
 
 export interface CurrentUser {

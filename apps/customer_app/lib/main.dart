@@ -384,6 +384,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
   Future<void> _logout() async { await _storage.deleteAll(); if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false); }
 
+  Future<void> _deleteAccount() async {
+    final password = TextEditingController();
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('حذف الحساب'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('سيتم تعطيل حسابك وحذف اسمك وبيانات الاتصال. تبقى القيود المالية للمحل محفوظة محاسبيًا.'),
+          const SizedBox(height: 14),
+          TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة المرور للتأكيد')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), style: FilledButton.styleFrom(backgroundColor: Colors.red), child: const Text('حذف الحساب')),
+        ],
+      ),
+    );
+    if (accepted != true) { password.dispose(); return; }
+    try {
+      final response = await http.delete(
+        Uri.parse('$_apiBase/api/v1/auth/account'),
+        headers: {'authorization': 'Bearer ${widget.token}', 'content-type': 'application/json'},
+        body: jsonEncode({'password': password.text}),
+      ).timeout(const Duration(seconds: 30));
+      password.dispose();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر حذف الحساب. تحقق من كلمة المرور.')));
+        return;
+      }
+      await _logout();
+    } catch (_) {
+      password.dispose();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر الوصول إلى الخادم لحذف الحساب.')));
+    }
+  }
+
   Future<void> _openAddShop() async {
     final added = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => AddShopScreen(token: widget.token)),
@@ -472,6 +508,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 Navigator.pop(context);
                 _openAddShop();
               },
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+              title: const Text('حذف الحساب', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w800)),
+              subtitle: const Text('تعطيل الحساب وحذف بياناته الشخصية'),
+              onTap: () { Navigator.pop(context); _deleteAccount(); },
             ),
             const SizedBox(height: 12),
           ],

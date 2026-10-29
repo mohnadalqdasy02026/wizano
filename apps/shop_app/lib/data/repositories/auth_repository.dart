@@ -22,6 +22,7 @@ abstract class AuthRepository {
   Future<User?> cachedUser();
 
   Future<void> logout();
+  Future<void> deleteAccount(String password);
   Future<String?> readActiveShopId();
   Future<void> setActiveShopId(String? shopId);
 }
@@ -97,8 +98,11 @@ class ApiAuthRepository implements AuthRepository {
       return await _api.me();
     } on ApiException catch (e) {
       if (e.isUnauthorized) {
-        await _tokens.clear();
-        return null;
+        // لا نمسح الجلسة لمجرد 401 عابر: قد يحدث ذلك حين ينتهي access
+        // token بينما Render نائم ولا يستطيع طلب التجديد الوصول في وقته.
+        // يبقى المستخدم داخل التطبيق بالنسخة المحلية، ويعيد ApiClient المحاولة
+        // تلقائيًا عند عودة الخادم. الخروج الصريح فقط هو الذي يمسح الرموز.
+        rethrow;
       }
       rethrow;
     }
@@ -107,6 +111,12 @@ class ApiAuthRepository implements AuthRepository {
   @override
   Future<void> logout() async {
     await _api.logout();
+    await _tokens.clear();
+  }
+
+  @override
+  Future<void> deleteAccount(String password) async {
+    await _api.deleteAccount(password);
     await _tokens.clear();
   }
 

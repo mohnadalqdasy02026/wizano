@@ -9,6 +9,7 @@ import { authenticate } from "../../middleware/auth.js";
 import { env } from "../../config/index.js";
 import {
   getCurrentUser,
+  deleteAccount,
   loginUser,
   logoutUser,
   refreshTokens,
@@ -17,6 +18,7 @@ import {
 import {
   loginBodySchema,
   logoutBodySchema,
+  deleteAccountBodySchema,
   refreshBodySchema,
   registerBodySchema,
 } from "./schemas.js";
@@ -86,6 +88,18 @@ export async function registerAuthRoutes(
       if (!auth) throw new AppError(401, "UNAUTHORIZED", "يجب تسجيل الدخول.");
       const result = await getCurrentUser(deps.db, auth.userId);
       return { data: result };
+    },
+  );
+
+  app.delete(
+    "/api/v1/auth/account",
+    { preHandler: authenticate, config: authRateLimit },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const auth = req.auth;
+      if (!auth) throw new AppError(401, "UNAUTHORIZED", "يجب تسجيل الدخول.");
+      const body = parseOrThrow(deleteAccountBodySchema, req.body);
+      await deleteAccount(deps.db, auth.userId, body.password);
+      return reply.status(204).send();
     },
   );
 }

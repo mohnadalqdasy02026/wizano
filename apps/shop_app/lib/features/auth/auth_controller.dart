@@ -102,6 +102,26 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// يعطّل الحساب ويزيل بياناته الشخصية من الخادم، ثم يمسح الجهاز محليًا.
+  Future<String?> deleteAccount(String password) async {
+    _busy = true;
+    notifyListeners();
+    try {
+      await _repository.deleteAccount(password);
+      await _onLogout?.call();
+      _user = null;
+      _status = AuthStatus.unauthenticated;
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (_) {
+      return 'تعذر حذف الحساب الآن.';
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
   Future<String> activeShopId() async =>
       (await _repository.readActiveShopId()) ?? '';
 

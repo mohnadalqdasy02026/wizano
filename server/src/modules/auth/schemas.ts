@@ -50,7 +50,13 @@ export const logoutBodySchema = z.object({
   refreshToken: z.string().min(1, "رمز التجديد مطلوب"),
 });
 
+/// كلمة المرور مطلوبة لتأكيد تعطيل الحساب ومنع حذف الحساب من جهاز مفتوح.
+export const deleteAccountBodySchema = z.object({
+  password: z.string().min(1, "أدخل كلمة المرور لتأكيد حذف الحساب").max(200),
+});
+
 export type RegisterBody = z.infer<typeof registerBodySchema>;
 export type LoginBody = z.infer<typeof loginBodySchema>;
 export type RefreshBody = z.infer<typeof refreshBodySchema>;
 export type LogoutBody = z.infer<typeof logoutBodySchema>;
+export type DeleteAccountBody = z.infer<typeof deleteAccountBodySchema>;
