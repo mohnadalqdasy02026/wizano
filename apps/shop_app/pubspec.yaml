@@ -22,11 +22,13 @@ dependencies:
   path_provider: ^2.1.4
   crypto: ^3.0.6
   permission_handler: ^11.3.1
-  archive: ^4.5.2
+  archive: ^4.0.2
   flutter_secure_storage: ^10.3.4
   just_audio: ^0.9.46
-  pdf: ^3.11.3
+  pdf: 3.11.1
   printing: ^5.13.4
+  # إصدار متوافق مع archive 4.0 ونسخة Dart المضمنة مع Flutter الحالي.
+  image: 4.3.0
 
 # نستبدل حزمة web الخاصة بـ sherpa-onnx بنسخة محلية بلا أصول:
 # ملف WASM (14.4MB) كان يُضمَّن في حزمة أندرويد دون أي استخدام.
