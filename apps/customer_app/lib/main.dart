@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 // يبقى التطبيق متصلًا حتى إن نُسي dart-define وقت البناء.
 const _apiBase = String.fromEnvironment(
@@ -727,7 +731,7 @@ class _StatementScreenState extends State<StatementScreen>
                           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                           leading: Container(padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: (positive ? CustomerColors.teal : CustomerColors.gold).withValues(alpha: .15), borderRadius: BorderRadius.circular(13)), child: Icon(positive ? Icons.south_west_rounded : Icons.receipt_long_rounded, color: positive ? CustomerColors.teal : const Color(0xFFB7791F))),
                           title: Text(entry['description']?.toString() ?? entry['type']?.toString() ?? 'عملية', style: const TextStyle(fontWeight: FontWeight.w800)),
-                          subtitle: Text(entry['occurredAt']?.toString().split('T').first ?? ''),
+                          subtitle: Text(_operationDateTime(entry['occurredAt'])),
                           trailing: Text(effect, style: TextStyle(fontWeight: FontWeight.w800, color: positive ? CustomerColors.teal : CustomerColors.navy)),
                         ),
                       );
@@ -738,6 +742,15 @@ class _StatementScreenState extends State<StatementScreen>
         ],
       ),
     );
+  }
+
+  String _operationDateTime(Object? value) {
+    final raw = value?.toString();
+    if (raw == null) return '';
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return raw;
+    final local = parsed.toLocal();
+    return '${local.year.toString().padLeft(4, '0')}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}  ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 }
 
@@ -752,11 +765,17 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
     with WidgetsBindingObserver {
   final _message = TextEditingController();
   final _scroll = ScrollController();
+  final _recorder = AudioRecorder();
+  final _player = AudioPlayer();
   List<Map<String, dynamic>> _messages = const [];
   Timer? _poller;
+  Timer? _recordingTimer;
   bool _offline = false;
   bool _loading = true;
   bool _sending = false;
+  bool _recording = false;
+  int _recordingSeconds = 0;
+  bool _initialPositioned = false;
 
   @override
   void initState() {
@@ -767,7 +786,7 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
     _poller = Timer.periodic(const Duration(seconds: 7), (_) => _load());
   }
   @override
-  void dispose() { WidgetsBinding.instance.removeObserver(this); _poller?.cancel(); _message.dispose(); _scroll.dispose(); super.dispose(); }
+  void dispose() { WidgetsBinding.instance.removeObserver(this); _poller?.cancel(); _recordingTimer?.cancel(); _recorder.dispose(); _player.dispose(); _message.dispose(); _scroll.dispose(); super.dispose(); }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -776,7 +795,10 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
 
   Future<void> _restoreCache() async {
     final cached = await _readListCache(_messagesCacheKey(widget.shopId));
-    if (mounted && cached != null) setState(() { _messages = cached.cast<Map<String, dynamic>>(); _loading = false; });
+    if (mounted && cached != null) {
+      setState(() { _messages = cached.cast<Map<String, dynamic>>(); _loading = false; });
+      _scrollToLatest(immediate: true);
+    }
   }
 
   Future<void> _load() async {
@@ -795,7 +817,7 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
       if (!mounted) return;
       final hadNewMessages = merged.length > _messages.length;
       setState(() { _messages = merged; _offline = false; _loading = false; });
-      if (hadNewMessages) _scrollToLatest();
+      if (!_initialPositioned || hadNewMessages) _scrollToLatest(immediate: !_initialPositioned);
     } catch (_) {
       if (mounted) setState(() { _offline = true; _loading = false; });
     }
@@ -832,13 +854,78 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
     }
   }
 
+  Future<void> _recordVoice() async {
+    if (_recording) {
+      _recordingTimer?.cancel();
+      final path = await _recorder.stop();
+      if (!mounted) return;
+      setState(() => _recording = false);
+      if (path == null || _recordingSeconds < 1) return;
+      final bytes = await File(path).readAsBytes();
+      if (bytes.length > 1_000_000) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرسالة الصوتية طويلة جدًا؛ الحد الأقصى 30 ثانية.')));
+        return;
+      }
+      await _sendVoice(base64Encode(bytes), _recordingSeconds * 1000);
+      return;
+    }
+    if (!await _recorder.hasPermission()) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اسمح للتطبيق باستخدام الميكروفون أولًا.')));
+      return;
+    }
+    final dir = await getTemporaryDirectory();
+    final path = '${dir.path}/wizano_voice_${DateTime.now().microsecondsSinceEpoch}.m4a';
+    await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 32000, sampleRate: 16000), path: path);
+    if (!mounted) return;
+    setState(() { _recording = true; _recordingSeconds = 0; });
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_recordingSeconds >= 30) { _recordVoice(); return; }
+      setState(() => _recordingSeconds++);
+    });
+  }
+
+  Future<void> _sendVoice(String audioBase64, int durationMs) async {
+    try {
+      final response = await http.post(Uri.parse('$_apiBase/api/v1/shops/${widget.shopId}/my-messages'), headers: {'authorization': 'Bearer ${widget.token}', 'content-type': 'application/json'}, body: jsonEncode({'audioBase64': audioBase64, 'audioMimeType': 'audio/mp4', 'audioDurationMs': durationMs})).timeout(const Duration(seconds: 30));
+      final payload = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) throw const FormatException();
+      if (!mounted) return;
+      final messages = [..._messages, payload['data'] as Map<String, dynamic>];
+      await _saveCache(_messagesCacheKey(widget.shopId), messages);
+      setState(() { _messages = messages; _offline = false; });
+      _scrollToLatest();
+    } catch (_) {
+      if (!mounted) return;
+      final local = <String, dynamic>{'id': 'local-${DateTime.now().microsecondsSinceEpoch}', 'senderType': 'customer', 'createdAt': DateTime.now().toUtc().toIso8601String(), 'audioBase64': audioBase64, 'audioMimeType': 'audio/mp4', 'audioDurationMs': durationMs, 'pending': true};
+      final messages = [..._messages, local];
+      await _saveCache(_messagesCacheKey(widget.shopId), messages);
+      setState(() { _messages = messages; _offline = true; });
+      _scrollToLatest();
+    }
+  }
+
+  Future<void> _playVoice(Map<String, dynamic> item) async {
+    final encoded = item['audioBase64']?.toString();
+    if (encoded == null || encoded.isEmpty) return;
+    await _player.setAudioSource(AudioSource.uri(Uri.dataFromBytes(base64Decode(encoded), mimeType: item['audioMimeType']?.toString() ?? 'audio/mp4')));
+    await _player.play();
+  }
+
   Future<void> _flushPending() async {
     final pending = _messages.where((item) => item['pending'] == true).toList();
     if (pending.isEmpty) return;
     var updated = List<Map<String, dynamic>>.from(_messages);
     for (final item in pending) {
       try {
-        final response = await http.post(Uri.parse('$_apiBase/api/v1/shops/${widget.shopId}/my-messages'), headers: {'authorization': 'Bearer ${widget.token}', 'content-type': 'application/json'}, body: jsonEncode({'body': item['body']})).timeout(const Duration(seconds: 8));
+        final content = item['audioBase64']?.toString().isNotEmpty == true
+            ? {
+                'audioBase64': item['audioBase64'],
+                'audioMimeType': item['audioMimeType'],
+                'audioDurationMs': item['audioDurationMs'],
+              }
+            : {'body': item['body']};
+        final response = await http.post(Uri.parse('$_apiBase/api/v1/shops/${widget.shopId}/my-messages'), headers: {'authorization': 'Bearer ${widget.token}', 'content-type': 'application/json'}, body: jsonEncode(content)).timeout(const Duration(seconds: 30));
         if (response.statusCode < 200 || response.statusCode >= 300) continue;
         final payload = jsonDecode(response.body) as Map<String, dynamic>;
         final sent = payload['data'] as Map<String, dynamic>;
@@ -851,9 +938,15 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
     await _saveCache(_messagesCacheKey(widget.shopId), updated);
   }
 
-  void _scrollToLatest() {
+  void _scrollToLatest({bool immediate = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+      if (!_scroll.hasClients) return;
+      _initialPositioned = true;
+      if (immediate) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      } else {
+        _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+      }
     });
   }
 
@@ -874,6 +967,11 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
         child: Row(children: [
           Expanded(child: TextField(controller: _message, minLines: 1, maxLines: 4, maxLength: 2000, decoration: const InputDecoration(hintText: 'اكتب رسالة للمحل…', counterText: '', border: OutlineInputBorder()))),
           const SizedBox(width: 8),
+          IconButton(
+            tooltip: _recording ? 'إيقاف وإرسال الصوت' : 'رسالة صوتية',
+            onPressed: _sending ? null : _recordVoice,
+            icon: Icon(_recording ? Icons.stop_circle_rounded : Icons.mic_rounded, color: _recording ? Colors.red : CustomerColors.navy),
+          ),
           IconButton.filled(onPressed: _sending ? null : _send, tooltip: 'إرسال', icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send_rounded)),
         ]),
       )),
@@ -899,14 +997,16 @@ class _CustomerMessagesScreenState extends State<CustomerMessagesScreen>
           duration: const Duration(milliseconds: 280),
           tween: Tween(begin: 0, end: 1),
           builder: (_, value, child) => Opacity(opacity: value, child: Transform.translate(offset: Offset(0, 14 * (1 - value)), child: child)),
-          // في تطبيق العميل: رسائل العميل يمين، ورسائل صاحب المحل يسار.
-          child: Align(alignment: mine ? Alignment.centerRight : Alignment.centerLeft, child: Container(
+          // حسب تصميم وزانو: رسالة العميل الخارجة يسار، ورسالة المحل الواردة يمين.
+          child: Align(alignment: mine ? Alignment.centerLeft : Alignment.centerRight, child: Container(
           constraints: const BoxConstraints(maxWidth: 310),
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 7),
           decoration: BoxDecoration(color: mine ? CustomerColors.navy : Colors.white, borderRadius: BorderRadius.circular(16), border: mine ? null : Border.all(color: const Color(0xFFE5E7EB))),
-          child: Column(crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start, children: [
-            Text(item['body']?.toString() ?? '', style: TextStyle(color: mine ? Colors.white : const Color(0xFF1F2933))),
+          child: Column(crossAxisAlignment: mine ? CrossAxisAlignment.start : CrossAxisAlignment.end, children: [
+            if (item['audioBase64']?.toString().isNotEmpty == true)
+              InkWell(onTap: () => _playVoice(item), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.play_circle_fill_rounded, color: mine ? Colors.white : CustomerColors.navy), const SizedBox(width: 7), Text('رسالة صوتية ${(item['audioDurationMs'] as num? ?? 0) ~/ 1000} ث', style: TextStyle(color: mine ? Colors.white : CustomerColors.navy, fontWeight: FontWeight.w700))]))
+            else Text(item['body']?.toString() ?? '', style: TextStyle(color: mine ? Colors.white : const Color(0xFF1F2933))),
             const SizedBox(height: 4),
             Text(_time(item['createdAt']), style: TextStyle(fontSize: 10, color: mine ? Colors.white70 : const Color(0xFF6B7280))),
             if (item['pending'] == true) const Padding(padding: EdgeInsets.only(top: 3), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.error_outline_rounded, color: Color(0xFFE53935), size: 14), SizedBox(width: 4), Text('لم تُرسل', style: TextStyle(fontSize: 10, color: Color(0xFFE53935), fontWeight: FontWeight.w700))])),

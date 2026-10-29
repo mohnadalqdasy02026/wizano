@@ -476,22 +476,28 @@ class AuditEntry {
       );
 }
 
-/// رسالة نصية خاصة في محادثة المحل مع العميل.
+/// رسالة خاصة (نصية أو صوتية) بين المحل والعميل.
 class ConversationMessage {
   const ConversationMessage({
     required this.id,
-    required this.body,
+    this.body,
     required this.senderType,
     required this.createdAt,
     this.readAt,
+    this.audioBase64,
+    this.audioMimeType,
+    this.audioDurationMs,
     this.pending = false,
   });
 
   final String id;
-  final String body;
+  final String? body;
   final String senderType;
   final String createdAt;
   final String? readAt;
+  final String? audioBase64;
+  final String? audioMimeType;
+  final int? audioDurationMs;
   final bool pending;
 
   bool get isFromShop => senderType == 'shop';
@@ -499,11 +505,43 @@ class ConversationMessage {
   factory ConversationMessage.fromJson(Map<String, dynamic> json) =>
       ConversationMessage(
         id: json['id'] as String,
-        body: json['body'] as String,
+        body: json['body'] as String?,
         senderType: json['senderType'] as String,
         createdAt: json['createdAt'] as String,
         readAt: json['readAt'] as String?,
+        audioBase64: json['audioBase64'] as String?,
+        audioMimeType: json['audioMimeType'] as String?,
+        audioDurationMs: json['audioDurationMs'] as int?,
         pending: json['pending'] as bool? ?? false,
+      );
+}
+
+/// ملخص محادثة لعرض قائمة الرسائل مع آخر رسالة والعدد غير المقروء.
+class ConversationSummary {
+  const ConversationSummary({
+    required this.customerId,
+    required this.customerName,
+    required this.lastBody,
+    required this.lastIsAudio,
+    required this.lastCreatedAt,
+    required this.unreadCount,
+  });
+
+  final String customerId;
+  final String customerName;
+  final String? lastBody;
+  final bool lastIsAudio;
+  final String lastCreatedAt;
+  final int unreadCount;
+
+  factory ConversationSummary.fromJson(Map<String, dynamic> json) =>
+      ConversationSummary(
+        customerId: json['customerId'] as String,
+        customerName: json['customerName'] as String,
+        lastBody: json['lastBody'] as String?,
+        lastIsAudio: json['lastIsAudio'] as bool? ?? false,
+        lastCreatedAt: json['lastCreatedAt'] as String,
+        unreadCount: (json['unreadCount'] as num?)?.toInt() ?? 0,
       );
 }
 

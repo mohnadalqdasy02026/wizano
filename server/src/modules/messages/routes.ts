@@ -13,7 +13,7 @@ import {
   messageShopParamsSchema,
   sendMessageBodySchema,
 } from "./schemas.js";
-import { listMessages, sendMessage, type SenderType } from "./service.js";
+import { listConversationSummaries, listMessages, sendMessage, type SenderType } from "./service.js";
 
 export interface MessagesDeps {
   db: Database;
@@ -45,6 +45,19 @@ export async function registerMessageRoutes(
   app: FastifyInstance,
   deps: MessagesDeps = defaultMessagesDeps,
 ): Promise<void> {
+  app.get(
+    "/api/v1/shops/:shopId/message-summaries",
+    { preHandler: authenticate },
+    async (req: FastifyRequest) => {
+      const auth = req.auth;
+      if (!auth) throw new AppError(401, "UNAUTHORIZED", "يجب تسجيل الدخول.");
+      const { shopId } = parseOrThrow(messageShopParamsSchema, req.params);
+      const membership = await requireShopMembership(auth.userId, shopId);
+      requireOperationalRole(membership);
+      return { data: { items: await listConversationSummaries(deps.db, shopId) } };
+    },
+  );
+
   app.get(
     "/api/v1/shops/:shopId/customers/:customerId/messages",
     { preHandler: authenticate },

@@ -34,14 +34,15 @@ class ApiClient {
         baseUrl = baseUrl ??
             const String.fromEnvironment(
               'API_BASE_URL',
-              defaultValue: 'http://127.0.0.1:4000',
+              defaultValue: 'https://wizano-api.onrender.com',
             );
 
   final TokenStore _tokens;
   final http.Client _http;
   final String baseUrl;
 
-  static const Duration _timeout = Duration(seconds: 8);
+  // Render المجاني قد يحتاج وقتًا للاستيقاظ بعد الخمول؛ لا نعتبر ذلك انقطاعًا.
+  static const Duration _timeout = Duration(seconds: 30);
 
   Uri _uri(String path) => Uri.parse('$baseUrl/api/v1$path');
 
@@ -270,6 +271,17 @@ class ApiClient {
   // المراسلة مع العميل
   // ---------------------------------------------------------------------------
 
+  Future<List<ConversationSummary>> listMessageSummaries(String shopId) async {
+    final data = await _send(
+      method: 'GET',
+      path: '/shops/$shopId/message-summaries',
+    );
+    final items = data['items'] as List<dynamic>? ?? const [];
+    return items
+        .map((item) => ConversationSummary.fromJson(item as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
   Future<List<ConversationMessage>> listCustomerMessages(
     String shopId,
     String customerId,
@@ -289,12 +301,20 @@ class ApiClient {
   Future<ConversationMessage> sendCustomerMessage(
     String shopId,
     String customerId,
-    String body,
+    {String? body,
+    String? audioBase64,
+    String? audioMimeType,
+    int? audioDurationMs,}
   ) async {
     final data = await _send(
       method: 'POST',
       path: '/shops/$shopId/customers/$customerId/messages',
-      body: {'body': body},
+      body: {
+        if (body != null && body.isNotEmpty) 'body': body,
+        if (audioBase64 != null) 'audioBase64': audioBase64,
+        if (audioMimeType != null) 'audioMimeType': audioMimeType,
+        if (audioDurationMs != null) 'audioDurationMs': audioDurationMs,
+      },
     );
     return ConversationMessage.fromJson(data);
   }

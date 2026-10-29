@@ -1,8 +1,9 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import type { Database } from "../../db/index.js";
 import {
   customerMessages,
   customerShopLinks,
+  customers,
 } from "../../db/schema.js";
 import { notFound } from "../../common/errors.js";
 
@@ -17,6 +18,15 @@ export interface MessageView {
   audioBase64: string | null;
   audioMimeType: string | null;
   audioDurationMs: number | null;
+}
+
+export interface ConversationSummary {
+  customerId: string;
+  customerName: string;
+  lastBody: string | null;
+  lastIsAudio: boolean;
+  lastCreatedAt: string;
+  unreadCount: number;
 }
 
 async function requireLinkedCustomer(
@@ -84,6 +94,46 @@ export async function listMessages(
     )
     .orderBy(asc(customerMessages.createdAt));
   return rows.map(toMessageView);
+}
+
+/// ملخصات المحادثات لصاحب المحل. لا يعلّم الرسائل كمقروءة؛ يحدث ذلك فقط عند
+/// فتح محادثة العميل نفسها، مثل واتساب.
+export async function listConversationSummaries(
+  db: Database,
+  shopId: string,
+): Promise<ConversationSummary[]> {
+  const rows = await db
+    .select({
+      customerId: customerMessages.customerId,
+      customerName: customers.displayName,
+      body: customerMessages.body,
+      hasAudio: customerMessages.audioBase64,
+      senderType: customerMessages.senderType,
+      readAt: customerMessages.readAt,
+      createdAt: customerMessages.createdAt,
+    })
+    .from(customerMessages)
+    .innerJoin(customers, eq(customers.id, customerMessages.customerId))
+    .where(eq(customerMessages.shopId, shopId))
+    .orderBy(desc(customerMessages.createdAt));
+
+  const byCustomer = new Map<string, ConversationSummary>();
+  for (const row of rows) {
+    const previous = byCustomer.get(row.customerId);
+    if (!previous) {
+      byCustomer.set(row.customerId, {
+        customerId: row.customerId,
+        customerName: row.customerName,
+        lastBody: row.body,
+        lastIsAudio: row.hasAudio != null,
+        lastCreatedAt: row.createdAt.toISOString(),
+        unreadCount: row.senderType === "customer" && row.readAt == null ? 1 : 0,
+      });
+    } else if (row.senderType === "customer" && row.readAt == null) {
+      previous.unreadCount++;
+    }
+  }
+  return [...byCustomer.values()];
 }
 
 export async function sendMessage(
