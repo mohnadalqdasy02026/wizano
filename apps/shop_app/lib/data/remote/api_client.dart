@@ -41,9 +41,13 @@ class ApiClient {
   final http.Client _http;
   final String baseUrl;
 
-  // Render المجاني قد يحتاج وقتًا للاستيقاظ بعد الخمول؛ لا نعتبر ذلك انقطاعًا.
-  // خدمة Render المجانية تستيقظ بعد الخمول وقد تحتاج أكثر من 30 ثانية.
-  static const Duration _timeout = Duration(seconds: 55);
+  // الطلبات العادية يجب ألا تجمّد واجهة العمل عند تعطل الخادم. عند الفشل
+  // يحفظ التطبيق العملية محليًا ثم تعاد مزامنتها تلقائيًا.
+  static const Duration _requestTimeout = Duration(seconds: 15);
+
+  // فحص الصحة مستقل وأخف من طلبات البيانات. التكرار الهادئ للفحص يوقظ
+  // خدمة Render المجانية بعد الخمول، من دون إبقاء أي شاشة في الانتظار طويلًا.
+  static const Duration _healthTimeout = Duration(seconds: 12);
 
   Uri _uri(String path) => Uri.parse('$baseUrl/api/v1$path');
 
@@ -58,7 +62,9 @@ class ApiClient {
 
   Future<HealthResult> getHealth() async {
     try {
-      final response = await _http.get(_uri('/health')).timeout(_timeout);
+      final response = await _http
+          .get(_uri('/health'))
+          .timeout(_healthTimeout);
       if (response.statusCode != 200) {
         return HealthResult(
           ServerStatus.offline,
@@ -602,7 +608,8 @@ class ApiClient {
     http.Response response;
     try {
       response =
-          await _request(method, path, body, access, headers).timeout(_timeout);
+          await _request(method, path, body, access, headers)
+              .timeout(_requestTimeout);
     } on ApiException {
       rethrow;
     } catch (e) {
@@ -668,7 +675,7 @@ class ApiClient {
             headers: {'content-type': 'application/json'},
             body: jsonEncode({'refreshToken': refresh}),
           )
-          .timeout(_timeout);
+          .timeout(_requestTimeout);
       if (response.statusCode != 200) return false;
       final data = _decode(response);
       final tokens = AuthTokens.fromJson(data['tokens'] as Map<String, dynamic>);

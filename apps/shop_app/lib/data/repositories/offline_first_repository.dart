@@ -105,6 +105,10 @@ class OfflineFirstRepository {
     }
   }
 
+  /// حين نعرف مسبقًا أن الخادم غير متاح، لا ننتظر مهلة الشبكة مرة أخرى.
+  /// فحص الصحة في الجذر هو المسؤول عن اكتشاف عودة الخادم ثم بدء المزامنة.
+  bool get _knownOffline => _monitor?.offline ?? false;
+
   /// يسجّل عملية شراء: على الخادم، أو محليًا عند انقطاع الشبكة.
   Future<OperationOutcome<Purchase>> createPurchase({
     required String shopId,
@@ -127,6 +131,14 @@ class OfflineFirstRepository {
       'notes': notes,
       'idempotencyKey': key,
     };
+    if (_knownOffline) {
+      return _savePurchaseLocally(
+        localId: localId,
+        key: key,
+        payload: payload,
+        shopId: shopId,
+      );
+    }
     try {
       final created = await _api.createPurchase(
         shopId,
@@ -147,26 +159,12 @@ class OfflineFirstRepository {
           error is ApiException ? error.message : 'تعذر تسجيل العملية.',
         );
       }
-      await _queue.enqueue(
-        id: localId,
-        opType: LocalOpType.purchase,
-        shopId: shopId,
-        customerId: customerId,
-        idempotencyKey: key,
+      return _savePurchaseLocally(
+        localId: localId,
+        key: key,
         payload: payload,
-      );
-      await _queue.cacheOperation(
-        id: localId,
-        opType: LocalOpType.purchase,
         shopId: shopId,
-        customerId: customerId,
-        payload: {
-          ...payload,
-          'shopId': shopId,
-          'occurredAt': DateTime.now().toUtc().toIso8601String(),
-        },
       );
-      return OperationOutcome.local(_localPurchase(payload, shopId));
     }
   }
 
@@ -190,6 +188,14 @@ class OfflineFirstRepository {
       'notes': notes,
       'idempotencyKey': key,
     };
+    if (_knownOffline) {
+      return _savePaymentLocally(
+        localId: localId,
+        key: key,
+        payload: payload,
+        shopId: shopId,
+      );
+    }
     try {
       final created = await _api.createPayment(
         shopId,
@@ -209,27 +215,71 @@ class OfflineFirstRepository {
           error is ApiException ? error.message : 'تعذر تسجيل الدفعة.',
         );
       }
-      await _queue.enqueue(
-        id: localId,
-        opType: LocalOpType.payment,
-        shopId: shopId,
-        customerId: customerId,
-        idempotencyKey: key,
+      return _savePaymentLocally(
+        localId: localId,
+        key: key,
         payload: payload,
-      );
-      await _queue.cacheOperation(
-        id: localId,
-        opType: LocalOpType.payment,
         shopId: shopId,
-        customerId: customerId,
-        payload: {
-          ...payload,
-          'shopId': shopId,
-          'paidAt': DateTime.now().toUtc().toIso8601String(),
-        },
       );
-      return OperationOutcome.local(_localPayment(payload, shopId));
     }
+  }
+
+  Future<OperationOutcome<Purchase>> _savePurchaseLocally({
+    required String localId,
+    required String key,
+    required Map<String, dynamic> payload,
+    required String shopId,
+  }) async {
+    final customerId = payload['customerId']! as String;
+    await _queue.enqueue(
+      id: localId,
+      opType: LocalOpType.purchase,
+      shopId: shopId,
+      customerId: customerId,
+      idempotencyKey: key,
+      payload: payload,
+    );
+    await _queue.cacheOperation(
+      id: localId,
+      opType: LocalOpType.purchase,
+      shopId: shopId,
+      customerId: customerId,
+      payload: {
+        ...payload,
+        'shopId': shopId,
+        'occurredAt': DateTime.now().toUtc().toIso8601String(),
+      },
+    );
+    return OperationOutcome.local(_localPurchase(payload, shopId));
+  }
+
+  Future<OperationOutcome<Payment>> _savePaymentLocally({
+    required String localId,
+    required String key,
+    required Map<String, dynamic> payload,
+    required String shopId,
+  }) async {
+    final customerId = payload['customerId']! as String;
+    await _queue.enqueue(
+      id: localId,
+      opType: LocalOpType.payment,
+      shopId: shopId,
+      customerId: customerId,
+      idempotencyKey: key,
+      payload: payload,
+    );
+    await _queue.cacheOperation(
+      id: localId,
+      opType: LocalOpType.payment,
+      shopId: shopId,
+      customerId: customerId,
+      payload: {
+        ...payload,
+        'shopId': shopId,
+        'paidAt': DateTime.now().toUtc().toIso8601String(),
+      },
+    );
+    return OperationOutcome.local(_localPayment(payload, shopId));
   }
 
   /// عدد العمليات المحلية غير المرسلة لمحل معيّن.
@@ -252,8 +302,16 @@ class OfflineFirstRepository {
     String shopId, {
     String? search,
   }) async {
+    // نقرأ النسخة المحلية أولًا. نستخدمها كحماية إذا أعاد الخادم قائمة فارغة
+    // بشكل مؤقت أثناء الاستيقاظ أو تجديد الجلسة؛ لا يجوز أن تختفي أسماء العملاء
+    // بينما تبقى مشترياتهم ومدفوعاتهم ظاهرة.
+    final cached = await _queue.listCustomers(shopId);
+    if (_knownOffline) return (customers: cached, fromCache: true);
     try {
       final remote = await _api.listCustomers(shopId, search: search);
+      if ((search ?? '').trim().isEmpty && remote.isEmpty && cached.isNotEmpty) {
+        return (customers: cached, fromCache: true);
+      }
       // نحفظ النسخة الكاملة (بلا بحث) ليبقى العرض دون اتصال ممكنًا.
       if ((search ?? '').trim().isEmpty) {
         await _queue.replaceCustomers(shopId, remote);
@@ -262,11 +320,8 @@ class OfflineFirstRepository {
       return (customers: remote, fromCache: false);
     } catch (error) {
       _report(error);
-      if (!_isNetworkFailure(error)) {
-        return (customers: const <Customer>[], fromCache: false);
-      }
-      final local = await _queue.listCustomers(shopId);
-      return (customers: local, fromCache: true);
+      // حتى 401/5xx المؤقت لا يمسح العملاء الذين سبق حفظهم على الهاتف.
+      return (customers: cached, fromCache: cached.isNotEmpty);
     }
   }
 
@@ -279,13 +334,24 @@ class OfflineFirstRepository {
       final remote = await _api.listShops();
       await _queue.replaceShops(remote);
       return (shops: remote, fromCache: false);
-    } catch (error) {
-      if (!_isNetworkFailure(error)) {
-        return (shops: const <Shop>[], fromCache: false);
-      }
+    } catch (_) {
+      // حتى أخطاء الرمز المؤقتة أو استيقاظ Render لا يجب أن تجعل التطبيق
+      // ينسى محلًا تم إنشاؤه بالفعل ويعيد المستخدم إلى شاشة الإعداد.
       final local = await _queue.listShops();
-      return (shops: local, fromCache: true);
+      return (shops: local, fromCache: local.isNotEmpty);
     }
+  }
+
+  /// يثبت محلًا جديدًا في النسخة المحلية فور إنشائه، قبل أول إعادة تحميل.
+  /// هذا يمنع حلقة شاشة إعداد المحل عند إعادة فتح التطبيق أو تأخر الخادم.
+  Future<void> cacheShop(Shop shop) async {
+    final current = await _queue.listShops();
+    final updated = [
+      shop,
+      for (final item in current)
+        if (item.id != shop.id) item,
+    ];
+    await _queue.replaceShops(updated);
   }
 
   /// يحفظ نسخة محلية من العميل (بعد إضافة أو تعديل ناجح).
@@ -314,6 +380,16 @@ class OfflineFirstRepository {
       if (phone != null) 'phone': phone,
       if (notes != null) 'notes': notes,
     };
+    if (_knownOffline) {
+      return _saveCustomerLocally(
+        id: id,
+        shopId: shopId,
+        displayName: displayName,
+        phone: phone,
+        notes: notes,
+        payload: payload,
+      );
+    }
     try {
       final customer = await _api.createCustomer(
         shopId,
@@ -332,23 +408,41 @@ class OfflineFirstRepository {
           error is ApiException ? error.message : 'تعذر إضافة العميل.',
         );
       }
-      final customer = Customer(
+      return _saveCustomerLocally(
         id: id,
+        shopId: shopId,
         displayName: displayName,
         phone: phone,
         notes: notes,
-      );
-      await _queue.enqueue(
-        id: id,
-        opType: LocalOpType.customer,
-        shopId: shopId,
-        customerId: id,
-        idempotencyKey: id,
         payload: payload,
       );
-      await cacheCustomer(shopId, customer);
-      return OperationOutcome.local(customer);
     }
+  }
+
+  Future<OperationOutcome<Customer>> _saveCustomerLocally({
+    required String id,
+    required String shopId,
+    required String displayName,
+    required String? phone,
+    required String? notes,
+    required Map<String, dynamic> payload,
+  }) async {
+    final customer = Customer(
+      id: id,
+      displayName: displayName,
+      phone: phone,
+      notes: notes,
+    );
+    await _queue.enqueue(
+      id: id,
+      opType: LocalOpType.customer,
+      shopId: shopId,
+      customerId: id,
+      idempotencyKey: id,
+      payload: payload,
+    );
+    await cacheCustomer(shopId, customer);
+    return OperationOutcome.local(customer);
   }
 
   /// أقصى عدد محاولات لعملية واحدة قبل التوقف عن إعادة الإرسال.
@@ -370,6 +464,12 @@ class OfflineFirstRepository {
   }
 
   Future<SyncReport> _doSyncPending(String shopId) async {
+    if (_knownOffline) {
+      return SyncReport(
+        remaining: await _queue.count(shopId: shopId),
+        offline: true,
+      );
+    }
     final operations = await _queue.list(shopId: shopId);
     final pending = operations.where((o) => o.status.isPending).toList();
     var sent = 0;
@@ -597,6 +697,9 @@ class OfflineFirstRepository {
 
   /// المشتريات المعتمدة على الخادم.
   Future<List<Purchase>> listRemote(String shopId, {String? customerId}) async {
+    if (_knownOffline) {
+      return _readPurchaseCache(shopId, customerId: customerId);
+    }
     try {
       final result = await _api.listPurchases(shopId, customerId: customerId);
       // نحتفظ بآخر نسخة مؤكدة من الخادم، لا بالعمليات المعلقة فقط، كي يظهر
@@ -634,6 +737,9 @@ class OfflineFirstRepository {
     String shopId, {
     String? customerId,
   }) async {
+    if (_knownOffline) {
+      return _readPaymentCache(shopId, customerId: customerId);
+    }
     try {
       final result = await _api.listPayments(shopId, customerId: customerId);
       if (customerId == null) {
