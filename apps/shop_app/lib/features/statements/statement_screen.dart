@@ -5,8 +5,10 @@ import 'package:provider/provider.dart';
 import '../../app/theme.dart';
 import '../../app/widgets.dart';
 import '../../domain/entities/models.dart';
+import '../../services/pdf/statement_pdf_service.dart';
 import '../finance/adjustment_form_screen.dart';
 import '../finance/audit_log_screen.dart';
+import '../shop/shop_controller.dart';
 import 'operation_details_screen.dart';
 import 'statement_controller.dart';
 
@@ -69,6 +71,33 @@ class _StatementScreenState extends State<StatementScreen> {
     );
   }
 
+  Future<void> _sharePdf(CustomerStatement statement) async {
+    final shop = context.read<ShopController>().active;
+    if (shop == null) return;
+    try {
+      await StatementPdfService.share(
+        shopName: shop.name,
+        customerName: widget.customerName,
+        currency: shop.currency,
+        statement: statement,
+        filterLabel: _filterLabel,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر إنشاء ملف PDF. حاول مرة أخرى.')),
+      );
+    }
+  }
+
+  String get _filterLabel => switch (_type) {
+        'purchase' => 'المشتريات فقط',
+        'payment' => 'المدفوعات فقط',
+        'return' => 'المرتجعات فقط',
+        'adjustment' => 'التصحيحات فقط',
+        _ => 'كل العمليات',
+      };
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<StatementController>();
@@ -78,6 +107,11 @@ class _StatementScreenState extends State<StatementScreen> {
       appBar: AppBar(
         title: const Text('كشف الحساب'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: 'تصدير PDF',
+            onPressed: statement == null ? null : () => _sharePdf(statement),
+          ),
           IconButton(
             icon: const Icon(Icons.tune),
             tooltip: 'تصحيح مالي',
