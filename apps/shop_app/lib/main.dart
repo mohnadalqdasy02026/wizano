@@ -23,28 +23,41 @@ import 'features/statements/statement_controller.dart';
 import 'features/sync/sync_controller.dart';
 import 'services/speech/model_manager.dart';
 import 'services/speech/speech_service.dart';
+import 'services/notifications/local_notification_service.dart';
 
-void main() {
-  runApp(const WizanoShopApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final notifications = LocalNotificationService();
+  await notifications.initialize();
+  runApp(WizanoShopApp(notificationService: notifications));
 }
 
 class WizanoShopApp extends StatelessWidget {
-  const WizanoShopApp({super.key, ApiClient? apiClient, TokenStore? tokenStore})
+  const WizanoShopApp({
+    super.key,
+    ApiClient? apiClient,
+    TokenStore? tokenStore,
+    LocalNotificationService? notificationService,
+  })
       : _apiClientOverride = apiClient,
-        _tokenStoreOverride = tokenStore;
+        _tokenStoreOverride = tokenStore,
+        _notificationServiceOverride = notificationService;
 
   final ApiClient? _apiClientOverride;
   final TokenStore? _tokenStoreOverride;
+  final LocalNotificationService? _notificationServiceOverride;
 
   @override
   Widget build(BuildContext context) {
     final tokenStore = _tokenStoreOverride ?? SecureTokenStore();
     final apiClient =
         _apiClientOverride ?? ApiClient(tokenStore: tokenStore);
+    final notifications = _notificationServiceOverride ?? LocalNotificationService();
 
     return MultiProvider(
       providers: [
         Provider<ApiClient>.value(value: apiClient),
+        Provider<LocalNotificationService>.value(value: notifications),
         Provider<AuthRepository>(
           create: (_) =>
               ApiAuthRepository(api: apiClient, tokenStore: tokenStore),

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../app/theme.dart';
 import '../../core/connectivity.dart';
 import '../../data/remote/api_client.dart';
+import '../../services/notifications/local_notification_service.dart';
 import '../customers/customers_screen.dart';
 import '../home/dashboard_screen.dart';
 import '../messages/messages_screen.dart';
@@ -28,6 +29,8 @@ class _HomeShellState extends State<HomeShell> {
   int _unreadMessages = 0;
   bool _loadingUnreadMessages = false;
   Timer? _messageBadgePoller;
+  Map<String, int> _knownUnreadByCustomer = const {};
+  bool _receivedFirstMessageSnapshot = false;
 
   static const _tabs = [
     DashboardScreen(),
@@ -71,6 +74,23 @@ class _HomeShellState extends State<HomeShell> {
       if (mounted && total != _unreadMessages) {
         setState(() => _unreadMessages = total);
       }
+      final current = {
+        for (final item in summaries) item.customerId: item.unreadCount,
+      };
+      if (_receivedFirstMessageSnapshot) {
+        for (final item in summaries) {
+          if (!mounted) return;
+          final before = _knownUnreadByCustomer[item.customerId] ?? 0;
+          if (item.unreadCount > before) {
+            await context.read<LocalNotificationService>().showNewMessage(
+              customerName: item.customerName,
+              count: item.unreadCount - before,
+            );
+          }
+        }
+      }
+      _knownUnreadByCustomer = current;
+      _receivedFirstMessageSnapshot = true;
     } catch (_) {
       // نحتفظ بآخر عداد معروف عند انقطاع الشبكة.
     } finally {

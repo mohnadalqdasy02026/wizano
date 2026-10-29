@@ -25,7 +25,7 @@ class SherpaSpeechEngine implements SpeechEngine {
   /// **ملاحظة مهمة:** لا نستخدم `hotwordsFile` مع هذا النموذج: مفرداته على
   /// مستوى البايت، وت passing كلمات كاملة يجعل إنشاء المحرّك يفشل بالكامل
   /// ("Failed to create offline recognizer") فيتوقف التعرّف كليًّا.
-  /// التصحيح يتم بعد التعرّف عبر `Vocabulary.correct` (انظر `vocabulary.dart`).
+  /// لا نمرر كلمات توجيه أو تصحيحًا قسريًا حتى لا تتغير تفاصيل البيع المنطوقة.
   sherpa_onnx.OfflineRecognizerConfig _config(String modelDir) {
     return sherpa_onnx.OfflineRecognizerConfig(
       model: sherpa_onnx.OfflineModelConfig(
@@ -66,7 +66,7 @@ class SherpaSpeechEngine implements SpeechEngine {
   @override
   Future<void> setHotwords(String? hotwordsFile) async {
     // غير مدعوم مع هذا النموذج (مفرداته على مستوى البايت) ⇒ نتجاهله.
-    // التصحيح يتم بعد التعرّف عبر Vocabulary.correct.
+    // لا يوجد تصحيح تلقائي للنص الناتج.
   }
 
   @override

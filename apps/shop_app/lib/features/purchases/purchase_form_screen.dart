@@ -70,14 +70,6 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
   /// فلا وجود له في البناءات العادية.
   static const String _sttTestWav = String.fromEnvironment('WIZANO_STT_TEST_WAV');
 
-  /// مزامنة «قاموس المحل»: أصناف العمليات السابقة تصبح مفردات توجيه
-  /// للمحرّك (hotwords)، فيتحسّن التعرّف على أصناف هذا المحل بعينه — بلا إنترنت.
-  Future<void> _syncVocabulary(SpeechController speech) async {
-    final purchases = context.read<PurchaseController>().purchases;
-    if (purchases.isEmpty) return;
-    await speech.setShopTerms(purchases.map((p) => p.itemsText));
-  }
-
   /// لا نضع نص التعرف في عملية مالية تلقائيًا؛ يجب أن يراجعه صاحب المحل.
   Future<void> _reviewSpeechText(SpeechController speech) async {
     final recognized = speech.text.trim();
@@ -119,7 +111,6 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
 
   Future<void> _onMicPressed() async {
     final speech = context.read<SpeechController>();
-    await _syncVocabulary(speech);
 
     if (_sttTestWav.isNotEmpty) {
       await speech.transcribePath(_sttTestWav);

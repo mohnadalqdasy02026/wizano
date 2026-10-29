@@ -5,9 +5,7 @@ import '../../services/speech/wav_reader.dart';
 
 import 'package:flutter/foundation.dart';
 
-import '../../services/speech/text_normalizer.dart';
 import 'speech_engine.dart';
-import '../../services/speech/vocabulary.dart';
 
 enum SpeechState { idle, recording, processing, done, error }
 
@@ -64,8 +62,7 @@ class SpeechController extends ChangeNotifier {
     }
   }
 
-  List<String> _vocabulary = const [];
-  bool _vocabularyEnabled = true;
+  bool _vocabularyEnabled = false;
 
   /// تفعيل/تعطيل تصحيح الأخطاء بمفردات المحل بعد التعرّف.
   bool get vocabularyEnabled => _vocabularyEnabled;
@@ -76,19 +73,12 @@ class SpeechController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// يضبط مفردات التصحيح: المدمجة + أصناف المحل.
-  /// التصحيح يتم **بعد** التعرّف (تصحيح تقريبي بمسافة تحرير) — دون إنترنت.
-  Future<void> setShopTerms(Iterable<String> itemsTexts) async {
-    final terms = Vocabulary.build(
-      shopTerms: itemsTexts.expand(Vocabulary.extractTerms),
-    );
-    if (terms.length == _vocabulary.length &&
-        terms.every(_vocabulary.contains)) {
-      return;
-    }
-    _vocabulary = terms;
-    notifyListeners();
-  }
+  /// متوافق مع الاستدعاءات القديمة؛ لا يجري أي تعديل على النص المنطوق.
+  Future<void> setShopTerms(Iterable<String> itemsTexts) async {}
+
+  /// الناتج يصل كما أخرجه محرّك التعرف، دون تصحيح أو تنقية أو استبدال كلمات.
+  /// هذه قاعدة مهمة للبيانات المالية: لا يجوز للتطبيق تغيير ما قاله المستخدم.
+  String _verbatim(String text) => text.trim();
 
   /// يقيس مستوى الصوت المسجَّل (جذر متوسط المربعات) — للتشخيص.
   static double _rms(Float32List samples) {
@@ -108,10 +98,6 @@ class SpeechController extends ChangeNotifier {
     }
     return guess;
   }
-
-  /// يصحّح النص الناتج بالمفردات المعروفة (تصحيح تقريبي بعد التعرّف).
-  String _correct(String text) =>
-      _vocabularyEnabled ? Vocabulary.correct(text, _vocabulary) : text;
 
   Future<void> startRecording() async {
     _error = null;
@@ -194,7 +180,7 @@ class SpeechController extends ChangeNotifier {
               wave.samples.length - windowSamples,
             );
       final raw = await speechService.engine.transcribeSamples(samples, wave.sampleRate);
-      final text = _correct(normalizeArabicText(raw));
+      final text = _verbatim(raw);
       if (text.isEmpty) return;
       if (text == _partial) return;
       _partial = text;
@@ -257,7 +243,7 @@ class SpeechController extends ChangeNotifier {
         wave.samples,
         wave.sampleRate,
       );
-      return _correct(normalizeArabicText(raw));
+      return _verbatim(raw);
     }
     final buffer = StringBuffer();
     for (var offset = 0; offset < wave.samples.length; offset += chunkSize) {
@@ -267,7 +253,7 @@ class SpeechController extends ChangeNotifier {
         chunk,
         wave.sampleRate,
       );
-      final piece = _correct(normalizeArabicText(raw));
+      final piece = _verbatim(raw);
       if (piece.isNotEmpty) {
         if (buffer.isNotEmpty) buffer.write('\n');
         buffer.write(piece);
@@ -296,7 +282,7 @@ class SpeechController extends ChangeNotifier {
       final raw = wave.isEmpty
           ? await speechService.engine.transcribeFile(path)
           : await speechService.engine.transcribeSamples(wave.samples, wave.sampleRate);
-      final text = _correct(normalizeArabicText(raw));
+      final text = _verbatim(raw);
       debugPrint('[WIZANO-STT] file decode: samples=${wave.samples.length} text="$text"');
       if (text.isEmpty) {
         _error = 'لم أسمع كلامًا واضحًا';

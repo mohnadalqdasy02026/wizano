@@ -82,14 +82,11 @@ class _VoiceModelScreenState extends State<VoiceModelScreen> {
                 ),
               ],
               const SizedBox(height: 24),
-              SwitchListTile(
-                value: controller.vocabularyEnabled,
+              const ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('تصحيح الأخطاء بمفردات المحل'),
-                subtitle: const Text(
-                  'يصحّح الكلمات القريبة من أصناف محلك بعد التعرّف — يعمل دون إنترنت.',
-                ),
-                onChanged: (v) => controller.setVocabularyEnabled(v),
+                leading: Icon(Icons.record_voice_over_outlined),
+                title: Text('النص المنطوق كما تعرّف عليه المحرك'),
+                subtitle: Text('لا يبدّل وزانو الكلمات أو يصححها تلقائيًا؛ راجع النص قبل الحفظ عند الحاجة.'),
               ),
               const SizedBox(height: 12),
               if (info.status == ModelStatus.ready)
