@@ -31,6 +31,7 @@ class ApiClient {
     String? baseUrl,
   })  : _tokens = tokenStore,
         _http = httpClient ?? http.Client(),
+        _ownsHttpClient = httpClient == null,
         baseUrl = baseUrl ??
             const String.fromEnvironment(
               'API_BASE_URL',
@@ -38,7 +39,8 @@ class ApiClient {
             );
 
   final TokenStore _tokens;
-  final http.Client _http;
+  http.Client _http;
+  final bool _ownsHttpClient;
   final String baseUrl;
 
   // الطلبات العادية يجب ألا تجمّد واجهة العمل عند تعطل الخادم. عند الفشل
@@ -47,7 +49,7 @@ class ApiClient {
 
   // فحص الصحة مستقل وأخف من طلبات البيانات. التكرار الهادئ للفحص يوقظ
   // خدمة Render المجانية بعد الخمول، من دون إبقاء أي شاشة في الانتظار طويلًا.
-  static const Duration _healthTimeout = Duration(seconds: 12);
+  static const Duration _healthTimeout = Duration(seconds: 45);
 
   Uri _uri(String path) => Uri.parse('$baseUrl/api/v1$path');
 
@@ -84,11 +86,20 @@ class ApiClient {
         'الخادم يستجيب لكن قاعدة البيانات غير متاحة.',
       );
     } catch (_) {
+      // بعد تعطل طويل أو تبدّل الشبكة قد يبقى اتصال HTTP القديم غير صالح.
+      // إنشاء عميل جديد يجعل المحاولة التالية اتصالًا جديدًا تمامًا.
+      _resetTransport();
       return const HealthResult(
         ServerStatus.offline,
         'تعذر الوصول إلى الخادم. تحقق من اتصال الشبكة وعنوان الخادم.',
       );
     }
+  }
+
+  void _resetTransport() {
+    if (!_ownsHttpClient) return;
+    _http.close();
+    _http = http.Client();
   }
 
   // ---------------------------------------------------------------------------

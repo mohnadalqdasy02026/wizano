@@ -40,6 +40,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   Timer? _backgroundSync;
   bool _refreshing = false;
   bool _checkingConnection = false;
+  bool _hasCheckedConnection = false;
 
   @override
   void initState() {
@@ -48,7 +49,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     // مزامنة صامتة متكررة: لا يحتاج صاحب المحل لسحب الشاشة أو فتح صفحة
     // المزامنة كي تصل عملياته المحفوظة محليًا إلى الخادم أو تظهر التحديثات.
     _backgroundSync = Timer.periodic(
-      const Duration(seconds: 8),
+      const Duration(seconds: 12),
       (_) => _refreshSilently(),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkConnection());
@@ -92,8 +93,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     // «دون اتصال».
     if (!mounted) return false;
     if (_checkingConnection) {
-      // لا نطلق طلبًا موازيًا؛ المحاولة التالية في المؤقت ستتحقق مجددًا.
-      return false;
+      // الفحص الموجود هو وحده مسؤول عن تغيير الحالة؛ لا نسمح لطلب لاحق
+      // أن يعلن «دون اتصال» لمجرد أن فحص الاسترداد ما زال ينتظر Render.
+      return _hasCheckedConnection &&
+          context.read<ConnectivityMonitor>().offline == false;
     }
     _checkingConnection = true;
     try {
@@ -105,6 +108,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       } else {
         monitor.reportOffline();
       }
+      _hasCheckedConnection = true;
       return health.isReachable;
     } finally {
       _checkingConnection = false;

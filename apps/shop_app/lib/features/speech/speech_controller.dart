@@ -5,6 +5,7 @@ import '../../services/speech/wav_reader.dart';
 
 import 'package:flutter/foundation.dart';
 
+import '../../services/speech/text_normalizer.dart';
 import 'speech_engine.dart';
 
 enum SpeechState { idle, recording, processing, done, error }
@@ -76,9 +77,9 @@ class SpeechController extends ChangeNotifier {
   /// متوافق مع الاستدعاءات القديمة؛ لا يجري أي تعديل على النص المنطوق.
   Future<void> setShopTerms(Iterable<String> itemsTexts) async {}
 
-  /// الناتج يصل كما أخرجه محرّك التعرف، دون تصحيح أو تنقية أو استبدال كلمات.
+  /// تنظيف بصري للناتج فقط: يحذف التشكيل دون تصحيح أو استبدال أي كلمة.
   /// هذه قاعدة مهمة للبيانات المالية: لا يجوز للتطبيق تغيير ما قاله المستخدم.
-  String _verbatim(String text) => text.trim();
+  String _verbatim(String text) => cleanSpeechTranscript(text);
 
   /// يقيس مستوى الصوت المسجَّل (جذر متوسط المربعات) — للتشخيص.
   static double _rms(Float32List samples) {

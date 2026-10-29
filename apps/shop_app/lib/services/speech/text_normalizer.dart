@@ -60,3 +60,20 @@ String normalizeArabicText(String input) {
   result = result.replaceAll(RegExp(r'\n{2,}'), '\n');
   return result.trim();
 }
+
+/// تنظيف شكلي فقط للناتج الصوتي: يحذف التشكيل والتطويل والمسافات الزائدة.
+/// لا يستبدل أي كلمة أو حرف أو رقم، لذلك لا يمكنه تحويل اسم صنف إلى آخر.
+String cleanSpeechTranscript(String input) {
+  if (input.trim().isEmpty) return '';
+  final buffer = StringBuffer();
+  for (final rune in input.runes) {
+    if (rune == _tatweel || _isDiacritic(rune)) continue;
+    buffer.writeCharCode(rune);
+  }
+  return buffer
+      .toString()
+      .replaceAll(RegExp(r'[ \t\u00A0]+'), ' ')
+      .replaceAll(RegExp(r' *\n *'), '\n')
+      .replaceAll(RegExp(r'\n{2,}'), '\n')
+      .trim();
+}

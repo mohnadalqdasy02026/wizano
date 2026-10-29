@@ -66,7 +66,7 @@ class MainActivity : FlutterActivity() {
         ) return
         val text = if (count == 1) "لديك رسالة جديدة في وزانو" else "لديك $count رسائل جديدة في وزانو"
         val notification = NotificationCompat.Builder(this, messagesChannelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_launcher_wizano_shop)
             .setContentTitle("رسالة جديدة من $customerName")
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
