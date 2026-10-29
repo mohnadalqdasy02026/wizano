@@ -136,7 +136,7 @@ class ApiClient {
             headers: _headers(access),
             body: jsonEncode({'refreshToken': refresh}),
           )
-          .timeout(_timeout);
+          .timeout(_requestTimeout);
     } catch (_) {
       // الخروج محليًا دائمًا ينجح حتى لو فشل الاستدعاء الشبكي.
     }
