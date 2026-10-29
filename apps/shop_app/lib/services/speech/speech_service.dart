@@ -12,7 +12,7 @@ import 'wav_reader.dart';
 class SherpaSpeechEngine implements SpeechEngine {
   sherpa_onnx.OfflineRecognizer? _recognizer;
   @override
-  String get engineName => 'sherpa-onnx-moonshine-ar';
+  String get engineName => 'sherpa-onnx-whisper-base-ar';
 
   @override
   Future<void> init({required String modelDir}) async {
@@ -29,12 +29,14 @@ class SherpaSpeechEngine implements SpeechEngine {
   sherpa_onnx.OfflineRecognizerConfig _config(String modelDir) {
     return sherpa_onnx.OfflineRecognizerConfig(
       model: sherpa_onnx.OfflineModelConfig(
-        moonshine: sherpa_onnx.OfflineMoonshineModelConfig(
-          encoder: '$modelDir/encoder_model.ort',
-          mergedDecoder: '$modelDir/decoder_model_merged.ort',
+        whisper: sherpa_onnx.OfflineWhisperModelConfig(
+          encoder: '$modelDir/base-encoder.int8.onnx',
+          decoder: '$modelDir/base-decoder.int8.onnx',
+          language: 'ar',
+          task: 'transcribe',
         ),
-        tokens: '$modelDir/tokens.txt',
-        modelType: 'moonshine',
+        tokens: '$modelDir/base-tokens.txt',
+        modelType: 'whisper',
         debug: false,
         numThreads: 2,
         provider: 'cpu',

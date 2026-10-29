@@ -29,6 +29,24 @@ export interface ConversationSummary {
   unreadCount: number;
 }
 
+export async function getCustomerUnreadCount(
+  db: Database,
+  shopId: string,
+  customerId: string,
+): Promise<number> {
+  await requireLinkedCustomer(db, shopId, customerId);
+  const rows = await db
+    .select({ id: customerMessages.id })
+    .from(customerMessages)
+    .where(and(
+      eq(customerMessages.shopId, shopId),
+      eq(customerMessages.customerId, customerId),
+      eq(customerMessages.senderType, "shop"),
+      isNull(customerMessages.readAt),
+    ));
+  return rows.length;
+}
+
 async function requireLinkedCustomer(
   db: Database,
   shopId: string,

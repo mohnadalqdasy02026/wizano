@@ -28,10 +28,10 @@ Future<Directory> _defaultBaseDir() async {
   return getApplicationSupportDirectory();
 }
 
-/// مدير تنزيل نموذج sherpa-onnx العربي محليًا.
+/// مدير تنزيل نموذج Whisper العربي المحلي.
 /// النموذج يعمل 100% دون اتصال بعد التنزيل. لا يُرسل صوت للخارج.
 class ModelManager implements ModelProvider {
-  static const String modelName = 'sherpa-onnx-moonshine-base-ar-quantized-2026-02-27';
+  static const String modelName = 'sherpa-onnx-whisper-base';
   static const String modelUrl = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$modelName.tar.bz2';
 
   ModelManager({
@@ -81,9 +81,9 @@ class ModelManager implements ModelProvider {
 
   Future<bool> _isComplete(Directory dir) async {
     if (!await dir.exists()) return false;
-    final enc = File('${dir.path}/encoder_model.ort');
-    final dec = File('${dir.path}/decoder_model_merged.ort');
-    final tok = File('${dir.path}/tokens.txt');
+    final enc = File('${dir.path}/base-encoder.int8.onnx');
+    final dec = File('${dir.path}/base-decoder.int8.onnx');
+    final tok = File('${dir.path}/base-tokens.txt');
     return await enc.exists() && await dec.exists() && await tok.exists();
   }
 

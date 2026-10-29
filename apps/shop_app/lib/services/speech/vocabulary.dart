@@ -79,72 +79,33 @@ class Vocabulary {
     return out.toList();
   }
 
-  /// تصحيح نصّي تقريبي: يستبدل كل كلمة قريبة جدًا من مفردة معروفة.
+  /// تصحيح آمن للوحدات الشائعة الناتجة من الكلام.
   ///
-  /// - لا يُغيّر الكلمة إن كانت مطابقة أو قريبة جدًا.
-  /// - الحد الأقصى للمسافة = 1 للكلمات القصيرة (≤4) و2 للأطول.
+  /// لا نستبدل أسماء الأصناف بالمطابقة التقريبية؛ لأنها قد تغيّر المعنى
+  /// المالي للطلب (مثل تحويل «طحين» إلى «حلاوة»). يبقى اسم الصنف كما
+  /// سمعه المحرك، بينما نصحح فقط أخطاء كتابة الوحدات المعروفة.
   static String correct(String text, List<String> terms) {
-    if (text.trim().isEmpty || terms.isEmpty) return text;
-    final lookup = <String, String>{};
-    for (final t in terms) {
-      lookup[_stripDiacritics(t).toLowerCase()] = t;
-    }
+    if (text.trim().isEmpty) return text;
+    const safeUnits = <String, String>{
+      'كليو': 'كيلو',
+      'كيلوا': 'كيلو',
+      'كيلوو': 'كيلو',
+      'غرام': 'جرام',
+      'جرم': 'جرام',
+      'لتره': 'لتر',
+      'علبه': 'علبة',
+      'حبه': 'حبة',
+      'قطعه': 'قطعة',
+    };
     return text
         .split('\n')
-        .map((line) => _correctLine(line, lookup))
+        .map((line) => line
+            .split(RegExp(r'\s+'))
+            .where((word) => word.isNotEmpty)
+            .map((word) =>
+                safeUnits[_stripDiacritics(word).toLowerCase()] ?? word)
+            .join(' '))
         .join('\n');
-  }
-
-  static String _correctLine(String line, Map<String, String> lookup) {
-    final words =
-        line.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-    if (words.isEmpty) return line;
-    return words.map((w) => _correctWord(w, lookup)).join(' ');
-  }
-
-  static String _correctWord(String token, Map<String, String> lookup) {
-    final clean = _stripDiacritics(token).toLowerCase();
-    if (lookup.containsKey(clean)) return token;
-    final maxDistance = clean.length <= 4 ? 1 : 2;
-    String? best;
-    int bestDistance = maxDistance + 1;
-    for (final entry in lookup.entries) {
-      final candidate = entry.key;
-      if ((candidate.length - clean.length).abs() > maxDistance) continue;
-      final d = _levenshtein(clean, candidate);
-      if (d < bestDistance) {
-        bestDistance = d;
-        best = entry.value;
-      }
-    }
-    if (best == null) return token;
-    if (token == token.toUpperCase() && token.length > 1) return best.toUpperCase();
-    return best;
-  }
-
-  static int _levenshtein(String a, String b) {
-    if (a == b) return 0;
-    if (a.isEmpty) return b.length;
-    if (b.isEmpty) return a.length;
-    var previous = List<int>.generate(b.length + 1, (i) => i);
-    var current = List<int>.filled(b.length + 1, 0);
-    for (var i = 1; i <= a.length; i++) {
-      current[0] = i;
-      for (var j = 1; j <= b.length; j++) {
-        final cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
-        final deletion = current[j - 1] + 1;
-        final insertion = previous[j] + 1;
-        final substitution = previous[j - 1] + cost;
-        var value = deletion;
-        if (insertion < value) value = insertion;
-        if (substitution < value) value = substitution;
-        current[j] = value;
-      }
-      final swap = previous;
-      previous = current;
-      current = swap;
-    }
-    return previous[b.length];
   }
 }
 

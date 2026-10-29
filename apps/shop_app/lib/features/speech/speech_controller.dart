@@ -6,6 +6,7 @@ import '../../services/speech/wav_reader.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../services/speech/text_normalizer.dart';
+import '../../services/speech/system_speech_service.dart';
 import 'speech_engine.dart';
 
 enum SpeechState { idle, recording, processing, done, error }
@@ -13,11 +14,14 @@ enum SpeechState { idle, recording, processing, done, error }
 class SpeechController extends ChangeNotifier {
   final ModelProvider modelManager;
   final SpeechPort speechService;
+  final SystemSpeechService systemSpeech;
   SpeechController({
     required this.modelManager,
     required this.speechService,
+    SystemSpeechService? systemSpeech,
     Duration? liveInterval,
-  }) : _liveIntervalValue = liveInterval ?? _liveInterval {
+  })  : systemSpeech = systemSpeech ?? SystemSpeechService(),
+        _liveIntervalValue = liveInterval ?? _liveInterval {
     // فحص النموذج على القرص عند الإقلاع: بدونه يظنّ التطبيق أن النموذج
     // غير محمّل بعد كل إعادة تشغيل، فيطلب تنزيله من جديد.
     unawaited(ensureModel());
@@ -48,6 +52,13 @@ class SpeechController extends ChangeNotifier {
 
   Timer? _liveTimer;
   bool _busyDecoding = false;
+  StreamSubscription<SystemSpeechEvent>? _systemSubscription;
+  Completer<String>? _systemResult;
+  bool _usingSystemRecognizer = false;
+
+  /// هل خدمة Android عالية الدقة متاحة على هذا الهاتف؟
+  /// لا تعني أن الإنترنت متصل؛ عند فشل الشبكة نرجع للمحرك المحلي.
+  Future<bool> canUseHighAccuracyRecognition() => systemSpeech.isAvailable();
 
   Future<void> ensureModel() async {
     try {
@@ -110,6 +121,25 @@ class SpeechController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    // محرك Android يستعمل خدمة التعرف المثبّتة في الهاتف عند وجود الإنترنت.
+    // لا نستخدم أي تصحيح أو قاموس بعد النتيجة؛ النص يبقى كما أعادته الخدمة.
+    if (await systemSpeech.isAvailable()) {
+      try {
+        _usingSystemRecognizer = true;
+        _systemResult = Completer<String>();
+        await _systemSubscription?.cancel();
+        _systemSubscription = systemSpeech.events.listen(_onSystemSpeechEvent);
+        await systemSpeech.start();
+        _state = SpeechState.recording;
+        notifyListeners();
+        return;
+      } catch (e) {
+        // الخدمة موجودة لكن تعذر فتحها الآن؛ نستمر بالمحرك المحلي بدل تعطل الزر.
+        _usingSystemRecognizer = false;
+        await _systemSubscription?.cancel();
+        _systemSubscription = null;
+      }
+    }
     if (!modelManager.info.isReady) {
       _error = 'النموذج غير محمّل. نزّله من الإعدادات أولًا';
       _state = SpeechState.error;
@@ -136,6 +166,34 @@ class SpeechController extends ChangeNotifier {
       _error = 'فشل بدء التسجيل: $e';
       _state = SpeechState.error;
       notifyListeners();
+    }
+  }
+
+  void _onSystemSpeechEvent(SystemSpeechEvent event) {
+    if (event.type == 'partial') {
+      final text = _verbatim(event.text);
+      if (text.isNotEmpty && text != _partial) {
+        _partial = text;
+        notifyListeners();
+      }
+      return;
+    }
+    if (event.type == 'final') {
+      final text = _verbatim(event.text);
+      if (text.isNotEmpty) {
+        _text = text;
+        _partial = text;
+        if (!(_systemResult?.isCompleted ?? true)) _systemResult!.complete(text);
+      } else if (!(_systemResult?.isCompleted ?? true)) {
+        _systemResult!.completeError('لم أسمع كلامًا واضحًا');
+      }
+      notifyListeners();
+      return;
+    }
+    if (event.type == 'error' && !(_systemResult?.isCompleted ?? true)) {
+      _systemResult!.completeError(event.message.isEmpty
+          ? 'تعذر التعرف عبر خدمة الهاتف'
+          : event.message);
     }
   }
 
@@ -196,6 +254,33 @@ class SpeechController extends ChangeNotifier {
 
   Future<void> stopAndTranscribe() async {
     if (_state != SpeechState.recording) return;
+    if (_usingSystemRecognizer) {
+      _state = SpeechState.processing;
+      notifyListeners();
+      try {
+        await systemSpeech.stop();
+        final text = await (_systemResult?.future ?? Future<String>.value(''))
+            .timeout(const Duration(seconds: 12));
+        _text = text;
+        _state = SpeechState.done;
+      } catch (_) {
+        // عند تعذر خدمة الهاتف (غالبًا انقطاع الإنترنت) لا نخترع نصًا من
+        // المحرك المحلي؛ نعرض آخر نتيجة جزئية فقط إن كانت موجودة.
+        if (_partial.isNotEmpty) {
+          _text = _partial;
+          _state = SpeechState.done;
+        } else {
+          _error = 'تعذّر التعرف عالي الدقة. تحقق من الإنترنت أو أعد المحاولة، ويمكنك استخدام الإدخال اليدوي.';
+          _state = SpeechState.error;
+        }
+      } finally {
+        _usingSystemRecognizer = false;
+        await _systemSubscription?.cancel();
+        _systemSubscription = null;
+        notifyListeners();
+      }
+      return;
+    }
     _liveTimer?.cancel();
     _liveTimer = null;
     _state = SpeechState.processing;
@@ -318,6 +403,8 @@ class SpeechController extends ChangeNotifier {
   @override
   void dispose() {
     _liveTimer?.cancel();
+    _systemSubscription?.cancel();
+    unawaited(systemSpeech.cancel());
     speechService.dispose();
     modelManager.dispose();
     super.dispose();

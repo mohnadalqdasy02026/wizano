@@ -13,7 +13,7 @@ import {
   messageShopParamsSchema,
   sendMessageBodySchema,
 } from "./schemas.js";
-import { listConversationSummaries, listMessages, sendMessage, type SenderType } from "./service.js";
+import { getCustomerUnreadCount, listConversationSummaries, listMessages, sendMessage, type SenderType } from "./service.js";
 
 export interface MessagesDeps {
   db: Database;
@@ -95,6 +95,20 @@ export async function registerMessageRoutes(
           audioDurationMs: body.audioDurationMs,
         }),
       };
+    },
+  );
+
+  app.get(
+    "/api/v1/shops/:shopId/my-message-summary",
+    { preHandler: authenticate },
+    async (req: FastifyRequest) => {
+      const auth = req.auth;
+      if (!auth) throw new AppError(401, "UNAUTHORIZED", "يجب تسجيل الدخول.");
+      const { shopId } = parseOrThrow(messageShopParamsSchema, req.params);
+      const membership = await requireShopMembership(auth.userId, shopId);
+      if (membership.role !== "customer") throw forbidden("هذا المسار مخصص لحساب العميل.");
+      const customerId = await getCustomerIdForUser(deps.db, shopId, auth.userId);
+      return { data: { unreadCount: await getCustomerUnreadCount(deps.db, shopId, customerId) } };
     },
   );
 

@@ -55,7 +55,7 @@ class _VoiceModelScreenState extends State<VoiceModelScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'التعرّف على الكلام يتم على جهازك بالكامل',
+                        'وضع دون اتصال: نموذج محلي احتياطي',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: WizanoColors.navy,
@@ -63,7 +63,7 @@ class _VoiceModelScreenState extends State<VoiceModelScreen> {
                       ),
                       SizedBox(height: 8),
                       Text(
-                        'لا يُرسل أي تسجيل صوتي إلى أي خدمة خارجية. بعد تنزيل النموذج يعمل الإدخال الصوتي دون إنترنت تمامًا.',
+                        'عند الاتصال يستخدم زر الصوت خدمة الهاتف عالية الدقة لأسماء المنتجات العربية. عند انقطاع الإنترنت، يستخدم وزانو نموذج Whisper المحلي الأقوى كبديل؛ راجع النص دائمًا قبل الحفظ.',
                         style: TextStyle(color: WizanoColors.textMuted),
                       ),
                     ],
@@ -102,7 +102,7 @@ class _VoiceModelScreenState extends State<VoiceModelScreen> {
                   child: Text(
                     info.status == ModelStatus.downloading
                         ? 'جارٍ التنزيل...'
-                        : 'تنزيل النموذج (~135 ميجابايت)',
+                        : 'تنزيل نموذج Whisper المحلي (~165 ميجابايت)',
                   ),
                 ),
               const SizedBox(height: 12),

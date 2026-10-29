@@ -11,6 +11,8 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import 'services/customer_notification_service.dart';
+
 // يبقى التطبيق متصلًا حتى إن نُسي dart-define وقت البناء.
 const _apiBase = String.fromEnvironment(
   'API_BASE_URL',
@@ -129,7 +131,13 @@ class OfflineEmptyPanel extends StatelessWidget {
       );
 }
 
-void main() => runApp(const CustomerApp());
+final _customerNotifications = CustomerNotificationService();
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _customerNotifications.initialize();
+  runApp(const CustomerApp());
+}
 
 class CustomerApp extends StatelessWidget {
   const CustomerApp({super.key});
@@ -333,6 +341,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<dynamic> _shops = const [];
   Timer? _poller;
   bool _offline = false;
+  bool _checkingMessageBadges = false;
+  bool _receivedFirstMessageSnapshot = false;
+  Map<String, int> _unreadByShop = const {};
 
   @override
   void initState() {
@@ -378,8 +389,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _shops = shops;
         _offline = false;
       });
+      unawaited(_loadMessageBadges(shops));
     } catch (_) {
       if (mounted) setState(() => _offline = true);
+    }
+  }
+
+  /// يجلب العدادات فقط؛ لا يفتح المحادثة ولا يعلّم الرسائل مقروءة.
+  Future<void> _loadMessageBadges(List<dynamic> shops) async {
+    if (_checkingMessageBadges || shops.isEmpty) return;
+    _checkingMessageBadges = true;
+    try {
+      final current = <String, int>{};
+      for (final raw in shops) {
+        final shop = raw as Map<String, dynamic>;
+        final shopId = shop['id']?.toString();
+        if (shopId == null || shopId.isEmpty) continue;
+        final response = await http.get(
+          Uri.parse('$_apiBase/api/v1/shops/$shopId/my-message-summary'),
+          headers: {'authorization': 'Bearer ${widget.token}'},
+        ).timeout(const Duration(seconds: 20));
+        if (response.statusCode != 200) continue;
+        final payload = jsonDecode(response.body) as Map<String, dynamic>;
+        final count = ((payload['data'] as Map<String, dynamic>?)?['unreadCount'] as num?)?.toInt() ?? 0;
+        current[shopId] = count;
+        final previous = _unreadByShop[shopId] ?? 0;
+        if (_receivedFirstMessageSnapshot && count > previous) {
+          await _customerNotifications.showNewMessage(
+            shopId: shopId,
+            shopName: shop['name']?.toString() ?? 'المحل',
+            count: count - previous,
+          );
+        }
+      }
+      if (mounted) setState(() => _unreadByShop = current);
+      _receivedFirstMessageSnapshot = true;
+    } catch (_) {
+      // فشل عداد الرسائل لا يحوّل التطبيق إلى وضع دون اتصال.
+    } finally {
+      _checkingMessageBadges = false;
     }
   }
   Future<void> _logout() async { await _storage.deleteAll(); if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false); }
@@ -545,6 +593,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: CustomerColors.teal.withValues(alpha: .14), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.storefront_rounded, color: CustomerColors.navy)),
                           const SizedBox(width: 13),
                           Expanded(child: Text(shop['name']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17))),
+                          if ((_unreadByShop[shop['id']?.toString()] ?? 0) > 0) _UnreadBadge(count: _unreadByShop[shop['id']?.toString()]!),
+                          const SizedBox(width: 8),
                           const Icon(Icons.chevron_left_rounded, color: CustomerColors.navyBright),
                         ]),
                       ),
@@ -555,6 +605,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     ]),
   );
+}
+
+class _UnreadBadge extends StatelessWidget {
+  const _UnreadBadge({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(color: CustomerColors.teal, shape: BoxShape.circle),
+        child: Text(count > 99 ? '99+' : '$count', textDirection: TextDirection.ltr, style: const TextStyle(color: CustomerColors.navy, fontSize: 10, fontWeight: FontWeight.w900)),
+      );
 }
 
 class AddShopScreen extends StatefulWidget {
