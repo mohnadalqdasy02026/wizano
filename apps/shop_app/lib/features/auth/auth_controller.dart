@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../core/api_exception.dart';
@@ -38,6 +40,18 @@ class AuthController extends ChangeNotifier {
     _busy = true;
     notifyListeners();
     try {
+      // افتح الجلسة من الكاش أولًا. لا يجوز أن ينتظر المستخدم Render أو
+      // يفقد شاشة التطبيق عند توقف الخادم؛ التحقق الشبكي يأتي بالخلفية.
+      final stored = await _repository.hasStoredSession();
+      final cached = await _repository.cachedUser();
+      if (stored && cached != null) {
+        _user = cached;
+        _status = AuthStatus.authenticated;
+        _busy = false;
+        notifyListeners();
+        unawaited(_refreshUserInBackground());
+        return;
+      }
       final user = await _repository.currentUser();
       _user = user;
       _status =
@@ -54,6 +68,18 @@ class AuthController extends ChangeNotifier {
     } finally {
       _busy = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _refreshUserInBackground() async {
+    try {
+      final user = await _repository.currentUser();
+      if (user != null && _status == AuthStatus.authenticated) {
+        _user = user;
+        notifyListeners();
+      }
+    } catch (_) {
+      // الكاش هو المصدر الموثوق للعرض دون اتصال؛ لا نخرج المستخدم بسبب فشل الشبكة.
     }
   }
 

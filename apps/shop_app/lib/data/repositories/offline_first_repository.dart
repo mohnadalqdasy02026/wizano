@@ -342,6 +342,16 @@ class OfflineFirstRepository {
     }
   }
 
+  /// يقرأ المحلات من SQLite فورًا، بلا أي انتظار للشبكة.
+  Future<List<Shop>> cachedShops() => _queue.listShops();
+
+  /// تحديث صامت للمحلات بعد أن تكون الواجهة ظهرت من الكاش.
+  Future<List<Shop>> refreshShops() async {
+    final remote = await _api.listShops();
+    await _queue.replaceShops(remote);
+    return remote;
+  }
+
   /// يثبت محلًا جديدًا في النسخة المحلية فور إنشائه، قبل أول إعادة تحميل.
   /// هذا يمنع حلقة شاشة إعداد المحل عند إعادة فتح التطبيق أو تأخر الخادم.
   Future<void> cacheShop(Shop shop) async {

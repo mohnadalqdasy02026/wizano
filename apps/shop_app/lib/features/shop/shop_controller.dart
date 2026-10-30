@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../core/api_exception.dart';
@@ -39,6 +41,17 @@ class ShopController extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
+      // أظهر آخر محل محفوظ فورًا. لا نربط فتح التطبيق باستجابة Render.
+      final cached = await _repository.cachedShops();
+      if (cached.isNotEmpty) {
+        _shops = cached;
+        _active = _selectActive(cached);
+        _offline = true;
+        _loading = false;
+        notifyListeners();
+        unawaited(_refreshInBackground());
+        return;
+      }
       final result = await _repository.listShops();
       _offline = result.fromCache;
       _shops = result.shops;
@@ -52,6 +65,27 @@ class ShopController extends ChangeNotifier {
     } finally {
       _loading = false;
       notifyListeners();
+    }
+  }
+
+  Shop _selectActive(List<Shop> shops) {
+    return shops.firstWhere(
+      (shop) => shop.id == _active?.id,
+      orElse: () => shops.first,
+    );
+  }
+
+  Future<void> _refreshInBackground() async {
+    try {
+      final remote = await _repository.refreshShops();
+      if (remote.isEmpty) return;
+      _shops = remote;
+      _active = _selectActive(remote);
+      _offline = false;
+      _error = null;
+      notifyListeners();
+    } catch (_) {
+      // تبقى النسخة المحلية ظاهرة ولا نعرض خطأً أحمر بسبب توقف الخادم.
     }
   }
 
@@ -72,6 +106,8 @@ class ShopController extends ChangeNotifier {
         timezone: timezone,
         openingDate: openingDate,
       );
+      // احفظه قبل إشعار الواجهة: قد يبدأ AppRoot إعادة تحميل في اللحظة نفسها.
+      await _repository.cacheShop(shop);
       _shops = [shop, ..._shops];
       _active = shop;
       return null;
