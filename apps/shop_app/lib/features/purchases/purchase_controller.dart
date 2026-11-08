@@ -68,7 +68,11 @@ class PurchaseController extends ChangeNotifier {
       final local = await _repository.listLocal(shopId, customerId: customerId);
       _purchases = [...local, ...remote.items];
       _pendingCount = await _repository.pendingCount(shopId);
-      _fromServer = !remote.fromCache;
+      // في الوضع الصامت لا نُعلن «الأرقام ناقصة» إن رجع الكاش فقط بسبب
+      // تعثّر لحظي؛ نُبقي آخر حالة معروفة كي لا تتحول الأرقام إلى «—».
+      if (!silent || !remote.fromCache) {
+        _fromServer = !remote.fromCache;
+      }
       _error = null;
     } catch (_) {
       // دون اتصال: نُبقي النسخة المعروضة، ونضيف العمليات المحلية فقط إن

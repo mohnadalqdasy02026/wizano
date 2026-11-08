@@ -53,7 +53,9 @@ class CustomerController extends ChangeNotifier {
     }
     try {
       final result = await _repository.listCustomers(_shopId!, search: search);
-      _offline = result.fromCache;
+      if (!silent || !result.fromCache) {
+        _offline = result.fromCache;
+      }
       // النسخة المحلية تُصفَّى على الجهاز؛ نتيجة الخادم مُصفّاة أصلًا.
       _customers = result.fromCache
           ? _filter(result.customers, search)
