@@ -56,6 +56,7 @@ import {
   registerMessageRoutes,
   type MessagesDeps,
 } from "./modules/messages/routes.js";
+import { registerSiteRoutes } from "./modules/site/routes.js";
 
 export interface BuildAppOptions {
   healthDeps?: HealthDeps;
@@ -113,6 +114,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     },
   );
 
+  await registerSiteRoutes(app);
   await registerHealthRoutes(app, opts.healthDeps);
   await registerAuthRoutes(app, opts.authDeps);
   await registerShopRoutes(app, opts.shopsDeps);

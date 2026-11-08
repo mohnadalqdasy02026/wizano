@@ -1,12 +1,15 @@
 import { buildApp } from "./app.js";
+import { startKeepAlive } from "./common/keep_alive.js";
 import { env } from "./config/index.js";
 import { closeDb } from "./db/index.js";
 
 async function main(): Promise<void> {
   const app = await buildApp();
+  const keepAlive = startKeepAlive(app);
 
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info(`استلام إشارة ${signal} — إيقاف الخادم بأمان...`);
+    keepAlive.stop();
     try {
       await app.close();
       await closeDb();

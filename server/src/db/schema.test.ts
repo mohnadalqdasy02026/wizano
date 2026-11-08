@@ -73,7 +73,7 @@ afterAll(async () => {
 });
 
 describe("مخطط قاعدة البيانات المركزية", () => {
-  it("يُنشئ الجداول الـ18 المطلوبة", async () => {
+  it("يُنشئ الجداول الـ20 المطلوبة", async () => {
     const rows = await db.execute<{ table_name: string }>(
       sql`SELECT table_name FROM information_schema.tables
           WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
@@ -82,7 +82,9 @@ describe("مخطط قاعدة البيانات المركزية", () => {
     expect(names).toEqual(
       [
         "audit_logs",
+        "customer_messages",
         "customer_shop_links",
+        "customer_user_links",
         "customers",
         "device_registrations",
         "financial_adjustments",
