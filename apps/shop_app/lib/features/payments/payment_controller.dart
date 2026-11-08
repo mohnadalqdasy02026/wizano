@@ -35,17 +35,24 @@ class PaymentController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> load({String? customerId}) async {
+  /// [silent] تحديث خلفي صامت: لا مؤشر تحميل ولا رسالة خطأ، ويُبقي ما هو
+  /// معروض على الشاشة إن تعذّر الوصول.
+  Future<void> load({String? customerId, bool silent = false}) async {
     if (_shopId == null) return;
     final shopId = _shopId!;
-    _loading = true;
-    _error = null;
-    notifyListeners();
-    try {
-      // اعرض النسخة المحفوظة فورًا قبل انتظار الشبكة.
-      await _showCached(shopId, customerId: customerId);
+    if (!silent) {
+      _loading = true;
+      _error = null;
       notifyListeners();
-
+      try {
+        // اعرض النسخة المحفوظة فورًا قبل انتظار الشبكة.
+        await _showCached(shopId, customerId: customerId);
+        notifyListeners();
+      } catch (_) {
+        // لا شيء معروض بعد؛ نكمل إلى الجلب من الشبكة.
+      }
+    }
+    try {
       // محاولة إفراغ الطابور المحلي أولًا (ترفع وسم «غير متزامن» عند النجاح).
       await _repository.syncPending(shopId);
       final remote =
@@ -56,17 +63,19 @@ class PaymentController extends ChangeNotifier {
       _pendingCount = await _repository.pendingCount(shopId);
       _error = null;
     } catch (_) {
-      try {
-        final local =
-            await _repository.listLocalPayments(shopId, customerId: customerId);
-        if (local.isNotEmpty) {
-          _payments = [...local, ..._payments.where((p) => !local.any((l) => l.id == p.id))];
+      if (!silent) {
+        try {
+          final local =
+              await _repository.listLocalPayments(shopId, customerId: customerId);
+          if (local.isNotEmpty) {
+            _payments = [...local, ..._payments.where((p) => !local.any((l) => l.id == p.id))];
+          }
+          _pendingCount = await _repository.pendingCount(shopId);
+          _error = null;
+        } catch (_) {
+          _error = 'تعذر تحميل المدفوعات.';
+          _payments = const [];
         }
-        _pendingCount = await _repository.pendingCount(shopId);
-        _error = null;
-      } catch (_) {
-        _error = 'تعذر تحميل المدفوعات.';
-        _payments = const [];
       }
     } finally {
       _loading = false;

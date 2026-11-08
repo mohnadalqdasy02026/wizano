@@ -51,7 +51,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     // مزامنة صامتة متكررة: لا يحتاج صاحب المحل لسحب الشاشة أو فتح صفحة
     // المزامنة كي تصل عملياته المحفوظة محليًا إلى الخادم أو تظهر التحديثات.
     _backgroundSync = Timer.periodic(
-      const Duration(seconds: 12),
+      const Duration(seconds: 20),
       (_) => _refreshSilently(),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkConnection());
@@ -77,12 +77,12 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       if (!reachable || !mounted) return;
       final sync = context.read<SyncController>();
       if (sync.shopId == null) return;
-      await sync.syncNow();
+      await sync.syncNow(silent: true);
       if (!mounted) return;
       await Future.wait([
-        context.read<CustomerController>().load(),
-        context.read<PurchaseController>().load(),
-        context.read<PaymentController>().load(),
+        context.read<CustomerController>().load(silent: true),
+        context.read<PurchaseController>().load(silent: true),
+        context.read<PaymentController>().load(silent: true),
       ]);
     } finally {
       _refreshing = false;

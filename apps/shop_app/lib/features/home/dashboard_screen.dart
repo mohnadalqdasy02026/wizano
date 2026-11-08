@@ -315,7 +315,17 @@ class _SyncStatusCard extends StatelessWidget {
               : '$pending عملية غير متزامنة — لم تُرسل بعد',
           style: const TextStyle(color: WizanoColors.textMuted, fontSize: 13),
         ),
-        trailing: const Icon(Icons.chevron_left),
+        trailing: TweenAnimationBuilder<double>(
+          // كل تحديث خلفي ناجح يعيد تشغيل النبضة من الشفافية المنخفضة إلى
+          // الكاملة: إشارة بصرية هادئة بدل مؤشر تحميل يقطع الشاشة.
+          key: ValueKey<int>(sync.liveRefreshes),
+          tween: Tween<double>(begin: 0.15, end: 1),
+          duration: const Duration(milliseconds: 900),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, child) =>
+              Opacity(opacity: value, child: child),
+          child: const Icon(Icons.chevron_left),
+        ),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const SyncScreen()),
         ),

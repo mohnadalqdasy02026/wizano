@@ -19,6 +19,7 @@ class SyncController extends ChangeNotifier {
   String? _shopId;
   String? _retryingId;
   DateTime? _lastSyncAt;
+  int _liveRefreshes = 0;
 
   /// العمليات المحلية غير المُرسلة.
   List<QueuedOperation> get pending => _pending;
@@ -43,6 +44,10 @@ class SyncController extends ChangeNotifier {
   /// آخر مرة أُجرت فيها مزامنة.
   DateTime? get lastSyncAt => _lastSyncAt;
 
+  /// يزداد بعد كل تحديث خلفي ناجح — تستخدمه بطاقة المزامنة لتنبض نبضة
+  /// خفيفة بدل إظهار مؤشر تحميل أو نص «جارٍ التحديث».
+  int get liveRefreshes => _liveRefreshes;
+
   /// المحل النشط الذي تخصّه المزامنة.
   String? get shopId => _shopId;
 
@@ -56,17 +61,21 @@ class SyncController extends ChangeNotifier {
   }
 
   /// يقرأ الطابور وسجل المزامنة.
-  Future<void> load() async {
+  ///
+  /// [silent] قراءة خلفية: لا مؤشر تحميل ولا رسالة خطأ مرئية.
+  Future<void> load({bool silent = false}) async {
     final shopId = _shopId;
     if (shopId == null) return;
-    _loading = true;
-    _error = null;
-    notifyListeners();
+    if (!silent) {
+      _loading = true;
+      _error = null;
+      notifyListeners();
+    }
     try {
       _pending = await _repository.pending(shopId);
       _attempts = await _repository.syncLog(shopId);
     } catch (_) {
-      _error = 'تعذّر قراءة حالة المزامنة.';
+      if (!silent) _error = 'تعذّر قراءة حالة المزامنة.';
     } finally {
       _loading = false;
       notifyListeners();
@@ -101,12 +110,17 @@ class SyncController extends ChangeNotifier {
   }
 
   /// محاولة إرسال كل العمليات المعلّقة.
-  Future<void> syncNow() async {
+  ///
+  /// [silent] مزامنة دورية خلفية: لا وميض ولا نص حالة ولا رسالة خطأ، ويزداد
+  /// عدّاد [liveRefreshes] عند النجاح لتنبض بطاقة المزامنة نبضة خفيفة.
+  Future<void> syncNow({bool silent = false}) async {
     final shopId = _shopId;
     if (shopId == null || _syncing) return;
     _syncing = true;
-    _error = null;
-    notifyListeners();
+    if (!silent) {
+      _error = null;
+      notifyListeners();
+    }
     String? message;
     try {
       final report = await _repository.syncPending(shopId);
@@ -119,9 +133,15 @@ class SyncController extends ChangeNotifier {
     } finally {
       _syncing = false;
     }
-    await load();
-    // رسالة المزامنة لا تُمسح عند نجاح إعادة القراءة.
-    if (message != null && _error == null) {
+    await load(silent: silent);
+    if (silent) {
+      // لا نعرض أخطاء المزامنة الخلفية؛ شارة الاتصال تتكفل بذلك.
+      if (message == null) {
+        _liveRefreshes++;
+        notifyListeners();
+      }
+    } else if (message != null && _error == null) {
+      // رسالة المزامنة لا تُمسح عند نجاح إعادة القراءة.
       _error = message;
       notifyListeners();
     }

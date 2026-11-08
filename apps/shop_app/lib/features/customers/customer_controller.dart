@@ -42,11 +42,15 @@ class CustomerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> load({String? search}) async {
+  /// [silent] تحديث خلفي: لا يُظهر مؤشر تحميل ولا رسالة خطأ، ويُبقي ما هو
+  /// معروض على الشاشة إن تعذّر الوصول. يُستخدم من المزامنة الدورية الصامتة.
+  Future<void> load({String? search, bool silent = false}) async {
     if (_shopId == null) return;
-    _loading = true;
-    _error = null;
-    notifyListeners();
+    if (!silent) {
+      _loading = true;
+      _error = null;
+      notifyListeners();
+    }
     try {
       final result = await _repository.listCustomers(_shopId!, search: search);
       _offline = result.fromCache;
@@ -54,14 +58,14 @@ class CustomerController extends ChangeNotifier {
       _customers = result.fromCache
           ? _filter(result.customers, search)
           : result.customers;
-      if (result.fromCache && _customers.isEmpty) {
+      if (!silent && result.fromCache && _customers.isEmpty) {
         _error = 'تعذر الوصول إلى الخادم ولا توجد نسخة محفوظة من العملاء.';
       }
     } on ApiException catch (e) {
-      _error = e.message;
+      if (!silent) _error = e.message;
       // احتفظ بما كان ظاهرًا؛ فشل الشبكة لا يعني أن العملاء حُذفوا.
     } catch (_) {
-      _error = 'تعذر تحميل قائمة العملاء.';
+      if (!silent) _error = 'تعذر تحميل قائمة العملاء.';
     } finally {
       _loading = false;
       notifyListeners();

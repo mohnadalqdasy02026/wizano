@@ -42,19 +42,26 @@ class PurchaseController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> load({String? customerId}) async {
+  /// [silent] تحديث خلفي صامت: لا يمسح ما هو معروض ولا يقلب حالة «الأرقام
+  /// غير مكتملة» أثناء إعادة الجلب، فلا يظهر وميض على لوحة التحكم.
+  Future<void> load({String? customerId, bool silent = false}) async {
     if (_shopId == null) return;
     final shopId = _shopId!;
-    _loading = true;
-    _error = null;
-    notifyListeners();
-    try {
-      // اعرض النسخة المحفوظة فورًا (لا ننتظر الشبكة): آخر نسخة معروفة من
-      // الخادم + العمليات المحلية غير المرسلة. هذا ما يراه المستخدم دون
-      // اتصال أو أثناء استيقاظ الخادم.
-      await _showCached(shopId, customerId: customerId);
+    if (!silent) {
+      _loading = true;
+      _error = null;
       notifyListeners();
-
+      try {
+        // اعرض النسخة المحفوظة فورًا (لا ننتظر الشبكة): آخر نسخة معروفة من
+        // الخادم + العمليات المحلية غير المرسلة. هذا ما يراه المستخدم دون
+        // اتصال أو أثناء استيقاظ الخادم.
+        await _showCached(shopId, customerId: customerId);
+        notifyListeners();
+      } catch (_) {
+        // لا شيء معروض بعد؛ نكمل إلى الجلب من الشبكة.
+      }
+    }
+    try {
       // محاولة إفراغ الطابور المحلي أولًا (ترفع وسم «غير متزامن» عند النجاح).
       await _repository.syncPending(shopId);
       final remote = await _repository.listRemote(shopId, customerId: customerId);
@@ -65,7 +72,8 @@ class PurchaseController extends ChangeNotifier {
       _error = null;
     } catch (_) {
       // دون اتصال: نُبقي النسخة المعروضة، ونضيف العمليات المحلية فقط إن
-      // لم تكن ظاهرة بالفعل.
+      // لم تكن ظاهرة بالفعل. في الوضع الصامت لا نغيّر _fromServer كي لا
+      // تتحول الأرقام إلى «—» ثم تعود عند كل نبضة تحديث.
       try {
         final local = await _repository.listLocal(shopId, customerId: customerId);
         if (local.isNotEmpty) {
@@ -73,11 +81,13 @@ class PurchaseController extends ChangeNotifier {
         }
         _pendingCount = await _repository.pendingCount(shopId);
         _error = null;
-        _fromServer = false;
+        if (!silent) _fromServer = false;
       } catch (_) {
-        _error = 'تعذر تحميل المشتريات.';
-        _purchases = const [];
-        _fromServer = false;
+        if (!silent) {
+          _error = 'تعذر تحميل المشتريات.';
+          _purchases = const [];
+          _fromServer = false;
+        }
       }
     } finally {
       _loading = false;
