@@ -30,6 +30,9 @@ class LocalDatabase {
   /// جدول نسخة المحلات: آخر نسخة معروفة من محلات المستخدم (للقراءة دون اتصال).
   static const String shopsTable = 'shops';
 
+  /// جدول نسخة القوائم البعيدة (المشتريات والمدفوعات) لكل محل.
+  static const String remoteCacheTable = 'remote_cache';
+
   Future<Database> get database async {
     final existing = _db;
     if (existing != null) return existing;
@@ -41,7 +44,7 @@ class LocalDatabase {
     final path = p.join(dir, fileName);
     final db = await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await db.execute('''
@@ -78,6 +81,7 @@ class LocalDatabase {
         await _createSyncLog(db);
         await _createCustomers(db);
         await _createShops(db);
+        await _createRemoteCache(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -88,6 +92,9 @@ class LocalDatabase {
         }
         if (oldVersion < 4) {
           await _createShops(db);
+        }
+        if (oldVersion < 5) {
+          await _createRemoteCache(db);
         }
       },
     );
@@ -149,6 +156,19 @@ class LocalDatabase {
     ''');
   }
 
+  /// ينشئ جدول نسخة القوائم البعيدة (يُستدعى عند الإنشاء والترقية).
+  Future<void> _createRemoteCache(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $remoteCacheTable (
+        shop_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (shop_id, kind)
+      )
+    ''');
+  }
+
   /// يمسح كل البيانات المحلية (خروج أو تبديل حساب).
   Future<void> clearAll() async {
     final db = await database;
@@ -157,6 +177,7 @@ class LocalDatabase {
     await db.delete(syncLogTable);
     await db.delete(customersTable);
     await db.delete(shopsTable);
+    await db.delete(remoteCacheTable);
   }
 
   Future<void> close() async {

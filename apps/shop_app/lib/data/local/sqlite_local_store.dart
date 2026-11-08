@@ -376,6 +376,59 @@ class SqliteLocalStore implements LocalStore {
         )
         .toList();
   }
+
+  // ---------------------------------------------------------------------------
+  // نسخة القوائم البعيدة (المشتريات والمدفوعات) للقراءة دون اتصال
+  // ---------------------------------------------------------------------------
+
+  /// يحفظ آخر نسخة من قائمة بعيدة لمحل (تستبدل النسخة السابقة بالكامل).
+  @override
+  Future<void> saveRemoteList(
+    String shopId,
+    String kind,
+    List<Map<String, dynamic>> items,
+  ) async {
+    final db = await _db.database;
+    await db.insert(
+      LocalDatabase.remoteCacheTable,
+      {
+        'shop_id': shopId,
+        'kind': kind,
+        'payload': jsonEncode(items),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// يقرأ آخر نسخة محفوظة من قائمة بعيدة لمحل.
+  @override
+  Future<List<Map<String, dynamic>>> readRemoteList(
+    String shopId,
+    String kind,
+  ) async {
+    final db = await _db.database;
+    final rows = await db.query(
+      LocalDatabase.remoteCacheTable,
+      columns: ['payload'],
+      where: 'shop_id = ? AND kind = ?',
+      whereArgs: [shopId, kind],
+      limit: 1,
+    );
+    if (rows.isEmpty) return const [];
+    final raw = rows.first['payload'];
+    if (raw is! String) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
 }
 
 

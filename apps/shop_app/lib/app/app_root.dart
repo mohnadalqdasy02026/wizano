@@ -16,6 +16,7 @@ import '../features/shop/shop_setup_screen.dart';
 import '../features/sync/sync_controller.dart';
 import '../core/connectivity.dart';
 import '../data/remote/api_client.dart';
+import 'widgets.dart';
 
 /// الجذر: يوجّه تلقائيًا حسب حالة الجلسة والمحل.
 ///
@@ -41,6 +42,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   bool _refreshing = false;
   bool _checkingConnection = false;
   bool _hasCheckedConnection = false;
+  AuthStatus _lastAuthStatus = AuthStatus.unknown;
 
   @override
   void initState() {
@@ -64,6 +66,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
   Future<void> _refreshSilently() async {
     if (!mounted || _refreshing) return;
+    // بعد انتهاء الجلسة نكون في شاشة الدخول؛ لا نرسل طلبات أو نستهلك
+    // محاولات العمليات المحفوظة قبل أن يسجل المستخدم من جديد.
+    if (!context.read<AuthController>().isAuthenticated) return;
     _refreshing = true;
     try {
       // لا نبدأ المزامنة أو إعادة تحميل كل الأقسام قبل تأكيد عودة الخادم.
@@ -139,7 +144,12 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     if (auth.isAuthenticated && !_shopsLoaded) {
       _shopsLoaded = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await shops.load();
+        // المحل النشط المحفوظ هو المرجع: بدونه كان التطبيق يأخذ أول محل
+        // أبجديًا فيبدّل المحل ويعرض بيانات محل آخر.
+        final preferred = await auth.activeShopId();
+        await shops.load(
+          preferredShopId: preferred.isEmpty ? null : preferred,
+        );
         if (mounted && shops.active != null) {
           await auth.setActiveShopId(shops.active!.id);
         }
@@ -152,6 +162,20 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       _paymentShopId = null;
       _financeShopId = null;
       _syncShopId = null;
+    }
+
+    // الخروج أو انتهاء الجلسة لا يغيّر شاشة الجذر فقط: الصفحات المفتوحة
+    // فوقها (مثل الإعدادات أو الملف الشخصي) تبقى معروضة وتحجب شاشة الدخول.
+    // نغلق كل الصفحات المفتوحة حتى يرى المستخدم شاشة الدخول فورًا.
+    if (_lastAuthStatus != auth.status) {
+      final wasAuthenticated = _lastAuthStatus == AuthStatus.authenticated;
+      _lastAuthStatus = auth.status;
+      if (wasAuthenticated && auth.status == AuthStatus.unauthenticated) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        });
+      }
     }
 
     // مزامنة المحل النشط مع قسم العملاء وتحميلهم عند تغيّره.
@@ -205,9 +229,26 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       case AuthStatus.unauthenticated:
         return const LoginScreen();
       case AuthStatus.authenticated:
-        if (shops.loading && shops.shops.isEmpty) {
+        // أثناء أول تحميل نعرض شاشة انتظار بدل «إعداد المحل» كي لا يظهر
+        // للمستخدم أنه بلا محل قبل اكتمال الجلب.
+        if (!shops.loaded || (shops.loading && shops.shops.isEmpty)) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (shops.loadFailed && !shops.hasShop) {
+          return Scaffold(
+            body: ErrorState(
+              message: shops.error ?? 'تعذر تحميل بيانات المحل.',
+              onRetry: () async {
+                await shops.retry();
+                if (mounted && shops.active != null) {
+                  await context.read<AuthController>().setActiveShopId(
+                        shops.active!.id,
+                      );
+                }
+              },
+            ),
           );
         }
         return shops.hasShop ? const HomeShell() : const ShopSetupScreen();

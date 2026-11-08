@@ -11,21 +11,35 @@ import '../../domain/entities/models.dart';
 ///
 /// **دون اتصال:** تُعرض النسخة المحفوظة محليًا من آخر جلب ناجح، فيعرف
 /// التطبيق محله ولا يطلب إنشاء محل جديد.
+///
+/// **قاعدة مهمة:** المحل النشط المحفوظ على الجهاز هو المرجع الأول. كان
+/// التطبيق يأخذ `shops.first` (ترتيب أبجدي) فيبدّل المحل عند كل إقلاع
+/// ويعرض بيانات محل آخر — خصوصًا دون اتصال.
 class ShopController extends ChangeNotifier {
   ShopController({
     required ApiClient api,
     required OfflineFirstRepository repository,
+    Future<void> Function(String shopId)? onSelected,
   })  : _api = api,
-        _repository = repository;
+        _repository = repository,
+        _onSelected = onSelected;
 
   final ApiClient _api;
   final OfflineFirstRepository _repository;
+
+  /// يُستدعى عند اختيار المستخدم محلًا صريحًا (لحفظ الاختيار على الجهاز).
+  final Future<void> Function(String shopId)? _onSelected;
 
   List<Shop> _shops = const [];
   Shop? _active;
   bool _loading = false;
   bool _offline = false;
+  bool _loadFailed = false;
+  bool _loaded = false;
   String? _error;
+
+  /// المحل المفضّل (المحفوظ على الجهاز) — يبقى مرجع الاختيار.
+  String? _preferredShopId;
 
   List<Shop> get shops => _shops;
   Shop? get active => _active;
@@ -33,12 +47,28 @@ class ShopController extends ChangeNotifier {
   String? get error => _error;
   bool get hasShop => _active != null;
 
+  /// هل انتهى أول تحميل (نجاحًا أو فشلًا)؟ يميّز التهيئة من «بلا محل».
+  bool get loaded => _loaded;
+
   /// هل المحل معروض من النسخة المحلية (لا اتصال)؟
   bool get offline => _offline;
 
-  Future<void> load() async {
+  /// هل فشل تحميل المحلات دون وجود نسخة محلية؟
+  ///
+  /// عندها يجب عرض خطأ مع زر إعادة المحاولة — لا شاشة «إعداد المحل»،
+  /// لأن الفشل لا يعني أن المستخدم بلا محل.
+  bool get loadFailed => _loadFailed;
+
+  String? get preferredShopId => _preferredShopId;
+
+  /// يحمّل المحلات. مرّر [preferredShopId] (المحل المحفوظ) قبل التحميل.
+  Future<void> load({String? preferredShopId}) async {
+    if (preferredShopId != null && preferredShopId.isNotEmpty) {
+      _preferredShopId = preferredShopId;
+    }
     _loading = true;
     _error = null;
+    _loadFailed = false;
     notifyListeners();
     try {
       // أظهر آخر محل محفوظ فورًا. لا نربط فتح التطبيق باستجابة Render.
@@ -52,27 +82,64 @@ class ShopController extends ChangeNotifier {
         unawaited(_refreshInBackground());
         return;
       }
-      final result = await _repository.listShops();
-      _offline = result.fromCache;
-      _shops = result.shops;
-      _active = _shops.isNotEmpty ? _shops.first : null;
-    } on ApiException catch (e) {
-      _error = e.message;
-      _shops = const [];
-      _active = null;
-    } catch (_) {
-      _error = 'تعذر تحميل بيانات المحل.';
+      await _loadFromRemote();
     } finally {
       _loading = false;
+      _loaded = true;
       notifyListeners();
     }
   }
 
+  /// إعادة المحاولة بعد فشل التحميل مع الإبقاء على المحل المفضّل.
+  Future<void> retry() => load();
+
+  /// جلب من الخادم مع محاولتين: أول فشل عابر (استيقاظ الخادم مثلًا) لا
+  /// يجوز أن يُظهر للمستخدم أنه بلا محل.
+  Future<void> _loadFromRemote() async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final result = await _repository.listShops();
+        if (!result.failed) {
+          _shops = result.shops;
+          _active = _shops.isEmpty ? null : _selectActive(_shops);
+          _offline = result.fromCache;
+          _error = null;
+          _loadFailed = false;
+          return;
+        }
+        lastError = 'تعذر تحميل بيانات المحل.';
+      } catch (error) {
+        lastError = error;
+      }
+      if (attempt == 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+      }
+    }
+    _shops = const [];
+    _active = null;
+    _offline = false;
+    _loadFailed = true;
+    _error = lastError is ApiException
+        ? lastError.message
+        : 'تعذر تحميل بيانات المحل. تحقق من الاتصال وأعد المحاولة.';
+  }
+
+  /// يختار المحل النشط: المفضّل المحفوظ، ثم الحالي، ثم الأول.
   Shop _selectActive(List<Shop> shops) {
-    return shops.firstWhere(
-      (shop) => shop.id == _active?.id,
-      orElse: () => shops.first,
-    );
+    final preferred = _preferredShopId ?? _active?.id;
+    if (preferred != null) {
+      for (final shop in shops) {
+        if (shop.id == preferred) return shop;
+      }
+    }
+    final active = _active;
+    if (active != null) {
+      for (final shop in shops) {
+        if (shop.id == active.id) return shop;
+      }
+    }
+    return shops.first;
   }
 
   Future<void> _refreshInBackground() async {
@@ -83,6 +150,7 @@ class ShopController extends ChangeNotifier {
       _active = _selectActive(remote);
       _offline = false;
       _error = null;
+      _loadFailed = false;
       notifyListeners();
     } catch (_) {
       // تبقى النسخة المحلية ظاهرة ولا نعرض خطأً أحمر بسبب توقف الخادم.
@@ -109,7 +177,7 @@ class ShopController extends ChangeNotifier {
       // احفظه قبل إشعار الواجهة: قد يبدأ AppRoot إعادة تحميل في اللحظة نفسها.
       await _repository.cacheShop(shop);
       _shops = [shop, ..._shops];
-      _active = shop;
+      await select(shop);
       return null;
     } on ApiException catch (e) {
       return e.message;
@@ -121,8 +189,15 @@ class ShopController extends ChangeNotifier {
     }
   }
 
-  void select(Shop shop) {
+  /// يبدّل المحل النشط ويحفظ الاختيار على الجهاز فورًا.
+  Future<void> select(Shop shop) async {
     _active = shop;
+    _preferredShopId = shop.id;
     notifyListeners();
+    try {
+      await _onSelected?.call(shop.id);
+    } catch (_) {
+      // فشل الحفظ لا يمنع التبديل في الجلسة الحالية.
+    }
   }
 }

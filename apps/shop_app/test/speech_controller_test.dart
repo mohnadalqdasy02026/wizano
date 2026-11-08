@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shop_app/features/speech/speech_controller.dart';
 import 'package:shop_app/features/speech/speech_engine.dart';
+import 'package:shop_app/services/speech/system_speech_service.dart';
 import 'package:shop_app/services/speech/text_normalizer.dart';
 import 'package:shop_app/services/speech/wav_reader.dart';
 
@@ -78,6 +79,9 @@ class _FakeModelProvider implements ModelProvider {
   Future<void> ensureReady({bool force = false}) async {}
 
   @override
+  Future<void> checkReady() async {}
+
+  @override
   Future<void> deleteModel() async => status = ModelStatus.notDownloaded;
 
   @override
@@ -129,6 +133,17 @@ class _FakeSpeechPort implements SpeechPort {
 
   @override
   Future<void> dispose() async {}
+}
+
+/// خدمة تعرّف هاتف وهمية لفحص قرار التجاوز عند انقطاع الاتصال.
+class _FakeSystemSpeech extends SystemSpeechService {
+  int checks = 0;
+
+  @override
+  Future<bool> isAvailable() async {
+    checks++;
+    return true;
+  }
 }
 
 SpeechController _build({
@@ -189,6 +204,24 @@ void main() {
       await c.startRecording();
       expect(c.state, SpeechState.recording);
       expect(c.error, isNull);
+    });
+
+    test('عند انقطاع الاتصال يتجاوز خدمة الهاتف ويستخدم المحرك المحلي',
+        () async {
+      final models = _FakeModelProvider()..status = ModelStatus.ready;
+      final port = _FakeSpeechPort();
+      final system = _FakeSystemSpeech();
+      final c = SpeechController(
+        modelManager: models,
+        speechService: port,
+        systemSpeech: system,
+        isOffline: () => true,
+      );
+
+      await c.startRecording();
+
+      expect(c.state, SpeechState.recording);
+      expect(system.checks, 0);
     });
 
     test('startRecording يفشل برسالة واضحة عند غياب إذن الميكروفون', () async {

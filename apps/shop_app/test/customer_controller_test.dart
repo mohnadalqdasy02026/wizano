@@ -61,21 +61,22 @@ void main() {
     });
 
     test('add يضيف العميل إلى القائمة مرتبة', () async {
+      Future<http.Response> handler(http.Request r) async {
+        if (r.method == 'POST') {
+          return http.Response(
+            '{"data":{"id":"c9","displayName":"بدر","phone":null,'
+            '"notes":null,"archivedAt":null}}',
+            201,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('{"data":{"items":[]}}', 200,
+            headers: {'content-type': 'application/json'});
+      }
+
       final controller = CustomerController(
-        api: _api((r) async {
-          if (r.method == 'POST') {
-            return http.Response(
-              '{"data":{"id":"c9","displayName":"بدر","phone":null,'
-              '"notes":null,"archivedAt":null}}',
-              201,
-              headers: {'content-type': 'application/json'},
-            );
-          }
-          return http.Response('{"data":{"items":[]}}', 200,
-              headers: {'content-type': 'application/json'});
-        }),
-        repository: _repo((r) async => http.Response('{"data":{"items":[]}}', 200,
-            headers: {'content-type': 'application/json'})),
+        api: _api(handler),
+        repository: _repo(handler),
       );
 
       controller.setShop('shop-1');
@@ -86,13 +87,15 @@ void main() {
     });
 
     test('add يعيد رسالة الخطأ العربية عند الفشل', () async {
+      Future<http.Response> handler(http.Request r) async => http.Response(
+            '{"error":{"code":"BAD_REQUEST","message_ar":"بيانات الطلب غير صالحة."}}',
+            400,
+            headers: {'content-type': 'application/json'},
+          );
+
       final controller = CustomerController(
-        api: _api((r) async => http.Response(
-              '{"error":{"code":"BAD_REQUEST","message_ar":"بيانات الطلب غير صالحة."}}',
-              400,
-              headers: {'content-type': 'application/json'},
-            )),
-        repository: _repo((r) async => http.Response('{}', 200)),
+        api: _api(handler),
+        repository: _repo(handler),
       );
 
       controller.setShop('shop-1');

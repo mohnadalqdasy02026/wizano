@@ -6,6 +6,8 @@
     <application
         android:label="WIZANO"
         android:name="${applicationName}"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@drawable/ic_launcher_wizano_shop">
         <activity
             android:name=".MainActivity"

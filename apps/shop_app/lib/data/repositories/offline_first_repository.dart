@@ -68,7 +68,7 @@ class OfflineFirstRepository {
         _queue = queue,
         _uuid = uuid ?? const Uuid(),
         _monitor = monitor,
-        _remoteCache = remoteCache ?? const FlutterSecureStorage();
+        _remoteCache = remoteCache;
 
   final ApiClient _api;
   final LocalStore _queue;
@@ -76,7 +76,13 @@ class OfflineFirstRepository {
 
   /// مراقب حالة الاتصال (اختياري) — يُحدَّث بنتيجة كل طلب.
   final ConnectivityMonitor? _monitor;
-  final FlutterSecureStorage _remoteCache;
+
+  /// التخزين الآمن القديم (ترحيل الكاش فقط).
+  ///
+  /// يبقى اختياريًا: استدعاؤه في اختبارات الواجهة داخل fake async لا يكتمل،
+  /// فيُمرَّر من `main.dart` حيث يتوفر plugin التخزين الآمن، ولا يُمرَّر في
+  /// الاختبارات.
+  final FlutterSecureStorage? _remoteCache;
 
   LocalStore get queue => _queue;
 
@@ -84,6 +90,10 @@ class OfflineFirstRepository {
       'wizano.shop.cache.purchases.$shopId';
   String _paymentsCacheKey(String shopId) =>
       'wizano.shop.cache.payments.$shopId';
+
+  /// نوع القائمة في جدول `remote_cache`.
+  static const String _purchasesKind = 'purchases';
+  static const String _paymentsKind = 'payments';
 
   /// هل الخطأ خطأ شبكة (يستحق الحفظ المحلي) أم خطأ منطقي (رفض الخادم)؟
   static bool _isNetworkFailure(Object error) =>
@@ -321,7 +331,9 @@ class OfflineFirstRepository {
     } catch (error) {
       _report(error);
       // حتى 401/5xx المؤقت لا يمسح العملاء الذين سبق حفظهم على الهاتف.
-      return (customers: cached, fromCache: cached.isNotEmpty);
+      // ونعلن «من الكاش» دائمًا عند الفشل حتى لو كان الكاش فارغًا: المصدر
+      // حينها محلي لا خادم، فلا يجوز عرض قائمة فارغة كأنها الحقيقة.
+      return (customers: cached, fromCache: true);
     }
   }
 
@@ -329,16 +341,29 @@ class OfflineFirstRepository {
   ///
   /// تُحفظ نسخة المحلات محليًا ليعرف التطبيق محله النشط دون اتصال (وإلا
   /// ظنّ أنه بلا محل وطلب إنشاء محل جديد).
-  Future<({List<Shop> shops, bool fromCache})> listShops() async {
+  ///
+  /// [failed] تعني أن الجلب فشل ولا توجد نسخة محلية، فلا يجوز تفسير القائمة
+  /// الفارغة على أنها «المستخدم بلا محل».
+  Future<({List<Shop> shops, bool fromCache, bool failed})> listShops() async {
     try {
       final remote = await _api.listShops();
-      await _queue.replaceShops(remote);
-      return (shops: remote, fromCache: false);
+      if (remote.isNotEmpty) {
+        await _queue.replaceShops(remote);
+        return (shops: remote, fromCache: false, failed: false);
+      }
+      // قائمة فارغة قد تكون استجابة مؤقتة أثناء استيقاظ الخادم أو تجديد
+      // الجلسة؛ لا نمسح المحلات المحفوظة بسببها.
+      final local = await _queue.listShops();
+      return (shops: local, fromCache: local.isNotEmpty, failed: false);
     } catch (_) {
       // حتى أخطاء الرمز المؤقتة أو استيقاظ Render لا يجب أن تجعل التطبيق
       // ينسى محلًا تم إنشاؤه بالفعل ويعيد المستخدم إلى شاشة الإعداد.
       final local = await _queue.listShops();
-      return (shops: local, fromCache: local.isNotEmpty);
+      return (
+        shops: local,
+        fromCache: local.isNotEmpty,
+        failed: local.isEmpty,
+      );
     }
   }
 
@@ -346,9 +371,14 @@ class OfflineFirstRepository {
   Future<List<Shop>> cachedShops() => _queue.listShops();
 
   /// تحديث صامت للمحلات بعد أن تكون الواجهة ظهرت من الكاش.
+  ///
+  /// لا تستبدل النسخة المحفوظة بقائمة فارغة: القائمة الفارغة غالبًا استجابة
+  /// مؤقتة من الخادم، ومسحها كان يعيد المستخدم إلى «إعداد المحل».
   Future<List<Shop>> refreshShops() async {
     final remote = await _api.listShops();
-    await _queue.replaceShops(remote);
+    if (remote.isNotEmpty) {
+      await _queue.replaceShops(remote);
+    }
     return remote;
   }
 
@@ -541,27 +571,10 @@ class OfflineFirstRepository {
           continue;
         }
         if (e.isConflict) {
-        if (e.isConflict) {
           await _queue.updateStatus(
             op.id,
             SyncStatus.conflict,
             error: e.message,
-          );
-          await _queue.logAttempt(
-            opId: op.id,
-            opType: op.opType,
-            shopId: op.shopId,
-            status: SyncAttemptStatus.failed,
-            message: e.message,
-          );
-          _report(null);
-          failed++;
-          continue;
-        }
-        await _queue.updateStatus(
-          op.id,
-          SyncStatus.failed,
-          error: e.message,
           );
           await _queue.logAttempt(
             opId: op.id,
@@ -706,29 +719,43 @@ class OfflineFirstRepository {
 
 
   /// المشتريات المعتمدة على الخادم.
-  Future<List<Purchase>> listRemote(String shopId, {String? customerId}) async {
+  ///
+  /// `fromCache` تعني أن القائمة عُرضت من النسخة المحفوظة على الجهاز،
+  /// فتكون الأرقام ناقصة إن لم تكن النسخة الأخيرة كاملة.
+  Future<({List<Purchase> items, bool fromCache})> listRemote(
+    String shopId, {
+    String? customerId,
+  }) async {
+    final cached = await _readPurchaseCache(shopId, customerId: customerId);
     if (_knownOffline) {
-      return _readPurchaseCache(shopId, customerId: customerId);
+      return (items: cached, fromCache: true);
     }
     try {
       final result = await _api.listPurchases(shopId, customerId: customerId);
       // نحتفظ بآخر نسخة مؤكدة من الخادم، لا بالعمليات المعلقة فقط، كي يظهر
       // سجل المشتريات السابق كاملًا عند فتح التطبيق دون إنترنت.
-      if (customerId == null) {
-        await _remoteCache.write(
-          key: _purchasesCacheKey(shopId),
-          value: jsonEncode(result.map(_purchaseJson).toList()),
-        );
+      if (customerId == null && (result.isNotEmpty || cached.isEmpty)) {
+        await _writePurchaseCache(shopId, result);
       }
       _report(null);
-      return result;
+      // لا نستبدل نسخة صالحة بقائمة فارغة قد تكون استجابة مؤقتة.
+      if (customerId == null && result.isEmpty && cached.isNotEmpty) {
+        return (items: cached, fromCache: true);
+      }
+      return (items: result, fromCache: false);
     } catch (error) {
       _report(error);
-      final cached = await _readPurchaseCache(shopId, customerId: customerId);
-      if (cached.isNotEmpty) return cached;
+      if (cached.isNotEmpty) return (items: cached, fromCache: true);
       rethrow;
     }
   }
+
+  /// نسخة المشتريات المحفوظة على الجهاز (بلا شبكة) — للعرض الفوري.
+  Future<List<Purchase>> cachedPurchases(
+    String shopId, {
+    String? customerId,
+  }) =>
+      _readPurchaseCache(shopId, customerId: customerId);
 
   /// المشتريات المحلية المحفوظة (غير المرسلة بعد).
   Future<List<Purchase>> listLocal(String shopId, {String? customerId}) async {
@@ -743,28 +770,94 @@ class OfflineFirstRepository {
   }
 
   /// المدفوعات المعتمدة على الخادم.
-  Future<List<Payment>> listRemotePayments(
+  Future<({List<Payment> items, bool fromCache})> listRemotePayments(
     String shopId, {
     String? customerId,
   }) async {
+    final cached = await _readPaymentCache(shopId, customerId: customerId);
     if (_knownOffline) {
-      return _readPaymentCache(shopId, customerId: customerId);
+      return (items: cached, fromCache: true);
     }
     try {
       final result = await _api.listPayments(shopId, customerId: customerId);
-      if (customerId == null) {
-        await _remoteCache.write(
-          key: _paymentsCacheKey(shopId),
-          value: jsonEncode(result.map(_paymentJson).toList()),
-        );
+      if (customerId == null && (result.isNotEmpty || cached.isEmpty)) {
+        await _writePaymentCache(shopId, result);
       }
       _report(null);
-      return result;
+      if (customerId == null && result.isEmpty && cached.isNotEmpty) {
+        return (items: cached, fromCache: true);
+      }
+      return (items: result, fromCache: false);
     } catch (error) {
       _report(error);
-      final cached = await _readPaymentCache(shopId, customerId: customerId);
-      if (cached.isNotEmpty) return cached;
+      if (cached.isNotEmpty) return (items: cached, fromCache: true);
       rethrow;
+    }
+  }
+
+  /// يحفظ نسخة المشتريات في SQLite. فشل الحفظ لا يُفشل الجلب من الخادم.
+  Future<void> _writePurchaseCache(String shopId, List<Purchase> items) async {
+    try {
+      await _queue.saveRemoteList(
+        shopId,
+        _purchasesKind,
+        items.map(_purchaseJson).toList(),
+      );
+      // تنظيف النسخة القديمة من التخزين الآمن بعد نجاح الترحيل.
+      await _remoteCache?.delete(key: _purchasesCacheKey(shopId));
+    } catch (_) {
+      // الكاش تحسين للعرض دون اتصال فقط؛ لا نُسقط الطلب لأجله.
+    }
+  }
+
+  /// يحفظ نسخة المدفوعات في SQLite. فشل الحفظ لا يُفشل الجلب.
+  Future<void> _writePaymentCache(String shopId, List<Payment> items) async {
+    try {
+      await _queue.saveRemoteList(
+        shopId,
+        _paymentsKind,
+        items.map(_paymentJson).toList(),
+      );
+      await _remoteCache?.delete(key: _paymentsCacheKey(shopId));
+    } catch (_) {
+      // الكاش تحسين للعرض دون اتصال فقط.
+    }
+  }
+
+  /// يقرأ صفوف الكاش من SQLite، وإن لم توجد يقرأ النسخة القديمة من
+  /// التخزين الآمن ويرحّلها إلى SQLite تلقائيًا.
+  Future<List<Map<String, dynamic>>> _readCachedRows(
+    String shopId,
+    String kind,
+    String legacyKey,
+  ) async {
+    try {
+      final rows = await _queue.readRemoteList(shopId, kind);
+      if (rows.isNotEmpty) return rows;
+    } catch (_) {
+      // نكمل إلى التخزين القديم.
+    }
+    final legacy = _remoteCache;
+    if (legacy == null) return const [];
+    try {
+      final raw = await legacy.read(key: legacyKey);
+      if (raw == null) return const [];
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      final rows = decoded
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+      if (rows.isNotEmpty) {
+        try {
+          await _queue.saveRemoteList(shopId, kind, rows);
+        } catch (_) {
+          // مجرد ترحيل؛ القراءة تنجح حتى لو فشل الحفظ.
+        }
+      }
+      return rows;
+    } catch (_) {
+      return const [];
     }
   }
 
@@ -773,11 +866,13 @@ class OfflineFirstRepository {
     String? customerId,
   }) async {
     try {
-      final raw = await _remoteCache.read(key: _purchasesCacheKey(shopId));
-      if (raw == null) return const [];
-      final rows = jsonDecode(raw) as List<dynamic>;
+      final rows = await _readCachedRows(
+        shopId,
+        _purchasesKind,
+        _purchasesCacheKey(shopId),
+      );
       final items = rows
-          .map((row) => Purchase.fromJson(row as Map<String, dynamic>))
+          .map((row) => Purchase.fromJson(row))
           .toList(growable: false);
       return customerId == null
           ? items
@@ -792,11 +887,13 @@ class OfflineFirstRepository {
     String? customerId,
   }) async {
     try {
-      final raw = await _remoteCache.read(key: _paymentsCacheKey(shopId));
-      if (raw == null) return const [];
-      final rows = jsonDecode(raw) as List<dynamic>;
+      final rows = await _readCachedRows(
+        shopId,
+        _paymentsKind,
+        _paymentsCacheKey(shopId),
+      );
       final items = rows
-          .map((row) => Payment.fromJson(row as Map<String, dynamic>))
+          .map((row) => Payment.fromJson(row))
           .toList(growable: false);
       return customerId == null
           ? items
@@ -834,6 +931,13 @@ class OfflineFirstRepository {
         'notes': item.notes,
         'balanceAfter': item.balanceAfter,
       };
+
+  /// نسخة المدفوعات المحفوظة على الجهاز (بلا شبكة) — للعرض الفوري.
+  Future<List<Payment>> cachedPayments(
+    String shopId, {
+    String? customerId,
+  }) =>
+      _readPaymentCache(shopId, customerId: customerId);
 
   /// المدفوعات المحلية المحفوظة (غير المرسلة بعد).
   Future<List<Payment>> listLocalPayments(

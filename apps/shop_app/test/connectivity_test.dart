@@ -42,6 +42,9 @@ void main() {
       expect(monitor.offlineSince, isNotNull);
 
       online = true;
+      // عودة الاتصال يعلنها فحص الصحة في جذر التطبيق (AppRoot) وليس طلب
+      // بيانات واحد؛ فالمستودع يتخطى الشبكة ما دام المراقب يعلن الانقطاع.
+      monitor.reportOnline();
       await repository.listRemote('shop-1');
       expect(monitor.offline, isFalse);
       expect(monitor.offlineSince, isNull);

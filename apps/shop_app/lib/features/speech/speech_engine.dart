@@ -24,9 +24,17 @@ abstract class SpeechEngine {
 
 /// مزوّد النموذج المحلي (تحميل/حذف/تقدم).
 abstract class ModelProvider {
+  /// تحميل/حذف/تقدم حالة النموذج.
   ModelInfo get info;
   Stream<ModelInfo> get infoStream;
   Future<void> ensureReady({bool force = false});
+
+  /// فحص وجود النموذج على القرص **دون** بدء تنزيل.
+  ///
+  /// يُستدعى عند الإقلاع: لا يجوز أن يبدأ التطبيق تنزيل ~200MB كل مرة
+  /// يفتح فيها صاحب المحل التطبيق على شبكة بطيئة.
+  Future<void> checkReady();
+
   Future<void> deleteModel();
 
   /// مجلد تخزين النموذج على الجهاز.

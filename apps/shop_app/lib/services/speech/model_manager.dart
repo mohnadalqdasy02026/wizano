@@ -25,6 +25,18 @@ Future<Directory> _defaultBaseDir() async {
       // fallback
     }
   }
+  // ثم التخزين الخارجي الخاص بالتطبيق: مضمون الكتابة، ويبقى حتى مسح بيانات
+  // التطبيق (وليس إلغاء تثبيته). كان السابق يعود للتخزين الداخلي مباشرة
+  // فيفقد إمكانية نقل النموذج إلى الجهاز عبر USB.
+  try {
+    final external = await getExternalStorageDirectory();
+    if (external != null) {
+      await external.create(recursive: true);
+      return external;
+    }
+  } catch (_) {
+    // fallback
+  }
   return getApplicationSupportDirectory();
 }
 
@@ -64,6 +76,33 @@ class ModelManager implements ModelProvider {
   }
 
   @override
+  Future<void> checkReady() async {
+    final dir = await getModelDir();
+    final dirObj = Directory(dir);
+    await dirObj.parent.create(recursive: true);
+    if (await _isComplete(dirObj)) {
+      _info = ModelInfo(
+        status: ModelStatus.ready,
+        bytesDownloaded: 0,
+        bytesTotal: 0,
+        error: null,
+        modelDir: dir,
+      );
+      _controller.add(_info);
+      return;
+    }
+    final legacyDir = await _findLegacyDir(dirObj);
+    _info = ModelInfo(
+      status: legacyDir != null ? ModelStatus.ready : ModelStatus.notDownloaded,
+      bytesDownloaded: 0,
+      bytesTotal: 0,
+      error: null,
+      modelDir: legacyDir ?? '',
+    );
+    _controller.add(_info);
+  }
+
+  @override
   Future<void> ensureReady({bool force = false}) async {
     final dir = await getModelDir();
     final dirObj = Directory(dir);
@@ -76,15 +115,66 @@ class ModelManager implements ModelProvider {
       _controller.add(_info);
       return;
     }
+    // نموذج عربي سابق مكتمل: نستخدمه بدل إجبار المستخدم على تنزيل نموذج
+    // جديد قد لا يكتمل على شبكة بطيئة. التنزيل القسري (force) يبقى متاحًا.
+    if (!force) {
+      final legacyDir = await _findLegacyDir(dirObj);
+      if (legacyDir != null) {
+        debugPrint('[WIZANO-STT] using legacy model at $legacyDir');
+        _info = ModelInfo(
+          status: ModelStatus.ready,
+          bytesDownloaded: 0,
+          bytesTotal: 0,
+          error: null,
+          modelDir: legacyDir,
+        );
+        _controller.add(_info);
+        return;
+      }
+    }
     await _download(dir);
   }
 
-  Future<bool> _isComplete(Directory dir) async {
-    if (!await dir.exists()) return false;
-    final enc = File('${dir.path}/base-encoder.int8.onnx');
-    final dec = File('${dir.path}/base-decoder.int8.onnx');
-    final tok = File('${dir.path}/base-tokens.txt');
-    return await enc.exists() && await dec.exists() && await tok.exists();
+  /// يبحث عن نموذج عربي قديم مكتمل في المواقع المعروفة.
+  ///
+  /// لا نكتفي بمجلد التخزين الحالي: بعض الأجهزة تحتوي النموذج في مساحة
+  /// عامة بينما تعذّر الكتابة فيها، فيعود التطبيق إلى التخزين الداخلي
+  /// ويكرر تنزيل 200MB بلا داعٍ.
+  Future<String?> _findLegacyDir(Directory whisperDir) async {
+    final candidates = <String>{
+      '${whisperDir.parent.path}/$legacyModelName',
+      '/storage/emulated/0/Documents/Wizano/models/$legacyModelName',
+      '/sdcard/Documents/Wizano/models/$legacyModelName',
+    };
+    try {
+      final external = await getExternalStorageDirectory();
+      if (external != null) {
+        candidates.add('${external.path}/models/$legacyModelName');
+      }
+    } catch (_) {
+      // لا يوجد تخزين خارجي على هذا الجهاز.
+    }
+    for (final path in candidates) {
+      try {
+        if (await _isCompleteWith(path, legacyModelRequiredFiles)) {
+          return path;
+        }
+      } catch (_) {
+        // مسار غير متاح على هذا الجهاز: نجرّب التالي.
+      }
+    }
+    return null;
+  }
+
+  Future<bool> _isComplete(Directory dir) =>
+      _isCompleteWith(dir.path, modelRequiredFiles);
+
+  Future<bool> _isCompleteWith(String path, List<String> files) async {
+    if (!await Directory(path).exists()) return false;
+    for (final name in files) {
+      if (!await File('$path/$name').exists()) return false;
+    }
+    return true;
   }
 
   Future<void> _download(String dir) async {
@@ -120,9 +210,10 @@ class ModelManager implements ModelProvider {
       _info = ModelInfo(status: ModelStatus.verifying, bytesDownloaded: 0, bytesTotal: 0, error: null, modelDir: dir);
       _controller.add(_info);
 
-      final input = File(tarPath).readAsBytesSync();
-      final ok = await extractModelArchive(
-        compressedBytes: input,
+      // نفكّ الضغط على القرص تدفّقيًا: الأرشيف نحو 100MB ولا يصح تحميله
+      // كاملًا في الذاكرة ثم فكّه فيها (كان يسبّب فشلًا بعد اكتمال التنزيل).
+      final ok = await extractModelArchiveFromFile(
+        archivePath: tarPath,
         targetDir: tmpDir,
         modelName: modelName,
         requiredFiles: modelRequiredFiles,
@@ -169,8 +260,11 @@ class ModelManager implements ModelProvider {
   @override
   Future<void> deleteModel() async {
     final dir = await getModelDir();
-    final d = Directory(dir);
-    if (await d.exists()) await d.delete(recursive: true);
+    final parent = Directory(dir).parent;
+    for (final target in [dir, '${parent.path}/$legacyModelName']) {
+      final d = Directory(target);
+      if (await d.exists()) await d.delete(recursive: true);
+    }
     _info = const ModelInfo(status: ModelStatus.notDownloaded, bytesDownloaded: 0, bytesTotal: 0, error: null, modelDir: '');
     _controller.add(_info);
   }

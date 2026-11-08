@@ -101,9 +101,15 @@ flutter pub get
 flutter run               # على محاكي Android أو جهاز متصل
 ```
 
-عنوان الخادم الافتراضي داخل التطبيق: `http://10.0.2.2:4000` (محاكي Android — يشير إلى مضيف الجهاز).
+عنوان الخادم الافتراضي المدمج في التطبيق: `https://wizano-api.onrender.com` (خادم الإنتاج المنشور على Render).
 
-على **جهاز حقيقي** على نفس الشبكة:
+> **الربط يتم وقت البناء، لا وقت التثبيت.** ملف APK لا يسأل عن عنوان الخادم عند تثبيته؛ العنوان يُثبَّت داخله وقت `flutter build`. ولتوجيهه إلى خادم آخر مرّر `API_BASE_URL`:
+>
+> ```powershell
+> flutter build apk --release --dart-define=API_BASE_URL=https://wizano-api.onrender.com
+> ```
+
+للتطوير المحلي على محاكي Android: `http://10.0.2.2:4000` (يشير إلى مضيف الجهاز)، وعلى **جهاز حقيقي** على نفس الشبكة:
 
 ```powershell
 flutter run --dart-define=API_BASE_URL=http://<IP-الجهاز-الموضيف>:4000

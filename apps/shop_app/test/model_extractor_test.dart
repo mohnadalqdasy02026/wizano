@@ -8,9 +8,9 @@ import 'package:shop_app/services/speech/model_extractor.dart';
 /// مجلد جذر باسم النموذج يحوي الملفات المطلوبة.
 List<int> _buildFakeArchive(String modelName) {
   final archive = Archive();
-  archive.addFile(ArchiveFile('$modelName/encoder_model.ort', 4, 'enc!'.codeUnits));
-  archive.addFile(ArchiveFile('$modelName/decoder_model_merged.ort', 4, 'dec!'.codeUnits));
-  archive.addFile(ArchiveFile('$modelName/tokens.txt', 4, 'tok!'.codeUnits));
+  archive.addFile(ArchiveFile('$modelName/base-encoder.int8.onnx', 4, 'enc!'.codeUnits));
+  archive.addFile(ArchiveFile('$modelName/base-decoder.int8.onnx', 4, 'dec!'.codeUnits));
+  archive.addFile(ArchiveFile('$modelName/base-tokens.txt', 4, 'tok!'.codeUnits));
   archive.addFile(ArchiveFile('$modelName/test_wavs/0.wav', 4, 'wav!'.codeUnits));
   archive.addFile(ArchiveFile('other/ignore.txt', 4, 'ign!'.codeUnits));
 
@@ -33,18 +33,18 @@ void main() {
       );
 
       expect(ok, isTrue);
-      expect(File('$target/encoder_model.ort').existsSync(), isTrue);
-      expect(File('$target/decoder_model_merged.ort').existsSync(), isTrue);
-      expect(File('$target/tokens.txt').existsSync(), isTrue);
+      expect(File('$target/base-encoder.int8.onnx').existsSync(), isTrue);
+      expect(File('$target/base-decoder.int8.onnx').existsSync(), isTrue);
+      expect(File('$target/base-tokens.txt').existsSync(), isTrue);
       expect(File('$target/test_wavs/0.wav').existsSync(), isTrue);
       expect(File('$target/other/ignore.txt').existsSync(), isFalse);
 
       expect(
-        File('$target/encoder_model.ort').readAsStringSync(),
+        File('$target/base-encoder.int8.onnx').readAsStringSync(),
         'enc!',
       );
       expect(
-        File('$target/tokens.txt').readAsStringSync(),
+        File('$target/base-tokens.txt').readAsStringSync(),
         'tok!',
       );
 
@@ -60,7 +60,7 @@ void main() {
         compressedBytes: _buildFakeArchive(modelName),
         targetDir: target,
         modelName: modelName,
-        requiredFiles: const ['encoder_model.ort', 'missing_file.ort'],
+        requiredFiles: const ['base-encoder.int8.onnx', 'missing_file.ort'],
       );
 
       expect(ok, isFalse);
@@ -82,7 +82,7 @@ void main() {
       );
 
       expect(File('$target/stale.txt').existsSync(), isFalse);
-      expect(File('$target/encoder_model.ort').existsSync(), isTrue);
+      expect(File('$target/base-encoder.int8.onnx').existsSync(), isTrue);
 
       dir.deleteSync(recursive: true);
     });

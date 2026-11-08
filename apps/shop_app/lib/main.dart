@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 
 import 'app/app_root.dart';
@@ -8,6 +9,7 @@ import 'core/connectivity.dart';
 import 'core/secure_token_store.dart';
 import 'core/token_store.dart';
 import 'data/local/local_database.dart';
+import 'data/local/local_store.dart';
 import 'data/local/sqlite_local_store.dart';
 import 'data/repositories/offline_first_repository.dart';
 import 'data/remote/api_client.dart';
@@ -38,14 +40,19 @@ class WizanoShopApp extends StatelessWidget {
     ApiClient? apiClient,
     TokenStore? tokenStore,
     LocalNotificationService? notificationService,
+    LocalStore? localStore,
   })
       : _apiClientOverride = apiClient,
         _tokenStoreOverride = tokenStore,
-        _notificationServiceOverride = notificationService;
+        _notificationServiceOverride = notificationService,
+        _localStoreOverride = localStore;
 
   final ApiClient? _apiClientOverride;
   final TokenStore? _tokenStoreOverride;
   final LocalNotificationService? _notificationServiceOverride;
+
+  /// مخزن محلي بديل (اختبارات): يُمرَّر InMemory بدل SQLite الحقيقي.
+  final LocalStore? _localStoreOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +60,7 @@ class WizanoShopApp extends StatelessWidget {
     final apiClient =
         _apiClientOverride ?? ApiClient(tokenStore: tokenStore);
     final notifications = _notificationServiceOverride ?? LocalNotificationService();
+    final localStore = _localStoreOverride;
 
     return MultiProvider(
       providers: [
@@ -65,17 +73,24 @@ class WizanoShopApp extends StatelessWidget {
         Provider<LocalDatabase>(
           create: (_) => LocalDatabase(),
         ),
-        Provider<SqliteLocalStore>(
-          create: (ctx) => SqliteLocalStore(ctx.read<LocalDatabase>()),
-        ),
+        if (localStore != null)
+          Provider<LocalStore>.value(value: localStore)
+        else
+          Provider<LocalStore>(
+            create: (ctx) => SqliteLocalStore(ctx.read<LocalDatabase>()),
+          ),
         ChangeNotifierProvider<ConnectivityMonitor>(
           create: (_) => ConnectivityMonitor(),
         ),
         Provider<OfflineFirstRepository>(
           create: (ctx) => OfflineFirstRepository(
             api: apiClient,
-            queue: ctx.read<SqliteLocalStore>(),
+            queue: ctx.read<LocalStore>(),
             monitor: ctx.read<ConnectivityMonitor>(),
+            // التخزين الآمن لا يُستدعى في اختبارات الواجهة (لا يكتمل داخل
+            // الزمن الوهمي)؛ يُمرَّر فقط في التطبيق الحقيقي.
+            remoteCache:
+                localStore == null ? const FlutterSecureStorage() : null,
           ),
         ),
         ChangeNotifierProvider<AuthController>(
@@ -83,16 +98,21 @@ class WizanoShopApp extends StatelessWidget {
             // نلتقط نسخة قاعدة البيانات الآن: مسحها عند الخروج يمنع
             // انتقال عمليات معلّقة إلى حساب آخر.
             final database = ctx.read<LocalDatabase>();
-            return AuthController(
+            final auth = AuthController(
               repository: ctx.read<AuthRepository>(),
               onLogout: database.clearAll,
             );
+            // إن رفض الخادم رمز التجديد نهائيًا نعود لشاشة الدخول تلقائيًا
+            // بدل البقاء في «وضع دون اتصال» لا يخرج منه إلا حذف الحساب.
+            apiClient.onSessionExpired = auth.handleSessionExpired;
+            return auth;
           },
         ),
         ChangeNotifierProvider<ShopController>(
           create: (ctx) => ShopController(
             api: apiClient,
             repository: ctx.read<OfflineFirstRepository>(),
+            onSelected: (shopId) => ctx.read<AuthController>().setActiveShopId(shopId),
           ),
         ),
         ChangeNotifierProvider<CustomerController>(
@@ -126,9 +146,10 @@ class WizanoShopApp extends StatelessWidget {
           // غير كسول: يُفحص النموذج على القرص عند إقلاع التطبيق لا عند أول
           // استخدام للوحة، وإلا ظنّ التطبيق أن النموذج غير محمّل.
           lazy: false,
-          create: (_) => SpeechController(
+          create: (ctx) => SpeechController(
             modelManager: ModelManager(),
             speechService: SpeechService(),
+            isOffline: () => ctx.read<ConnectivityMonitor>().offline,
           ),
         ),
       ],

@@ -32,16 +32,25 @@ class ApiClient {
   })  : _tokens = tokenStore,
         _http = httpClient ?? http.Client(),
         _ownsHttpClient = httpClient == null,
-        baseUrl = baseUrl ??
-            const String.fromEnvironment(
-              'API_BASE_URL',
-              defaultValue: 'https://wizano-api.onrender.com',
-            );
+        baseUrl = _validatedBaseUrl(
+          baseUrl ??
+              const String.fromEnvironment(
+                'API_BASE_URL',
+                defaultValue: 'https://wizano-api.onrender.com',
+              ),
+        );
 
   final TokenStore _tokens;
   http.Client _http;
   final bool _ownsHttpClient;
   final String baseUrl;
+
+  /// تجديد الرمز الجاري الآن — طلبات 401 المتزامنة تشترك فيه بدل أن
+  /// يرسل كل منها رمز التجديد نفسه.
+  Future<bool>? _refreshInFlight;
+
+  /// يُستدعى مرة واحدة عند رفض رمز التجديد نهائيًا (انتهى أو أُبطل).
+  void Function()? onSessionExpired;
 
   // الطلبات العادية يجب ألا تجمّد واجهة العمل عند تعطل الخادم. عند الفشل
   // يحفظ التطبيق العملية محليًا ثم تعاد مزامنتها تلقائيًا.
@@ -50,6 +59,29 @@ class ApiClient {
   // فحص الصحة مستقل وأخف من طلبات البيانات. التكرار الهادئ للفحص يوقظ
   // خدمة Render المجانية بعد الخمول، من دون إبقاء أي شاشة في الانتظار طويلًا.
   static const Duration _healthTimeout = Duration(seconds: 45);
+
+  /// يمنع أي بناء يشير إلى خادم غير مشفّر بالخطأ.
+  ///
+  /// كل بيانات المحل (بيانات الدخول والعمليات المالية) تمر عبر هذا الرابط،
+  /// فلا يجوز قبول `http` في نسخة الإنتاج. نسمح فقط بعناوين التطوير المحلية
+  /// (`localhost` / `127.0.0.1` / محاكي Android) حتى تعمل الاختبارات.
+  static String _validatedBaseUrl(String raw) {
+    final uri = Uri.tryParse(raw);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      throw ArgumentError.value(raw, 'baseUrl', 'رابط الخادم غير صالح');
+    }
+    final isLocal = uri.host == 'localhost' ||
+        uri.host == '127.0.0.1' ||
+        uri.host == '10.0.2.2';
+    if (uri.scheme != 'https' && !isLocal) {
+      throw ArgumentError.value(
+        raw,
+        'baseUrl',
+        'يجب أن يكون رابط الخادم مشفّرًا (https).',
+      );
+    }
+    return raw;
+  }
 
   Uri _uri(String path) => Uri.parse('$baseUrl/api/v1$path');
 
@@ -632,7 +664,12 @@ class ApiClient {
     }
 
     if (response.statusCode == 401 && allowRetry) {
-      final refreshed = await _tryRefresh();
+      // إن كان رمز الوصول قد تغيّر أثناء الطلب (جدّده طلب آخر) نعيد
+      // المحاولة مباشرة بدل تدوير رمز تجديد جديد بلا داعٍ.
+      final currentAccess = await _tokens.readAccessToken();
+      final refreshed = (currentAccess != null && currentAccess != access)
+          ? true
+          : await _tryRefresh();
       if (refreshed) {
         return _send(
           method: method,
@@ -676,18 +713,55 @@ class ApiClient {
     }
   }
 
-  Future<bool> _tryRefresh() async {
+  /// تجديد واحد فقط في الوقت الواحد.
+  ///
+  /// الخادم يدوّر رمز التجديد ويُبطل القديم، وإعادة استخدام رمز مُبطل تُبطل
+  /// السلسلة كاملة (حماية من السرقة). فلو أرسلت عدة طلبات 401 رمز التجديد
+  /// نفسه في وقت واحد، ينجح أولها ويقتل الخادم الجلسة بسبب الباقي، ولا يعود
+  /// الاتصال إلا بتسجيل دخول جديد. لذلك نتقاسم محاولة تجديد واحدة.
+  Future<bool> _tryRefresh() {
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+    final future = _refreshOnce();
+    _refreshInFlight = future;
+    return future.whenComplete(() {
+      if (identical(_refreshInFlight, future)) _refreshInFlight = null;
+    });
+  }
+
+  Future<bool> _refreshOnce() async {
     final refresh = await _tokens.readRefreshToken();
     if (refresh == null) return false;
+    http.Response response;
     try {
-      final response = await _http
+      response = await _http
           .post(
             _uri('/auth/refresh'),
             headers: {'content-type': 'application/json'},
             body: jsonEncode({'refreshToken': refresh}),
           )
           .timeout(_requestTimeout);
-      if (response.statusCode != 200) return false;
+    } catch (_) {
+      // فشل شبكة (Render نائم أو انقطاع): الجلسة سليمة، لا نمسح شيئًا.
+      return false;
+    }
+
+    if (response.statusCode == 401 || response.statusCode == 400) {
+      // رفض نهائي: الرمز منتهٍ أو أُبطل أو أُعيد استخدامه. لا معنى لإبقاء
+      // المستخدم في «وضع دون اتصال» كاذب؛ تمسح الجلسة ويُعاد إلى شاشة
+      // الدخول مع الاحتفاظ بالبيانات المحلية غير المزامنة.
+      final current = await _tokens.readRefreshToken();
+      if (current != null && current != refresh) {
+        // جرى تسجيل دخول جديد أثناء انتظار الرد — لا نمسح جلسته.
+        return false;
+      }
+      await _tokens.clear();
+      onSessionExpired?.call();
+      return false;
+    }
+    if (response.statusCode != 200) return false;
+
+    try {
       final data = _decode(response);
       final tokens = AuthTokens.fromJson(data['tokens'] as Map<String, dynamic>);
       await _tokens.saveTokens(

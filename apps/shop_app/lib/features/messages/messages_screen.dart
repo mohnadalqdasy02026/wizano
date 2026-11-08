@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../app/theme.dart';
 import '../../app/widgets.dart';
+import '../../core/api_exception.dart';
 import '../../data/remote/api_client.dart';
 import '../../domain/entities/models.dart';
 import '../shop/shop_controller.dart';
@@ -24,6 +25,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
   Timer? _poller;
   bool _loading = true;
   bool _offline = false;
+  String? _error;
 
   @override
   void initState() {
@@ -44,9 +46,18 @@ class _MessagesScreenState extends State<MessagesScreen> {
     try {
       final items = await context.read<ApiClient>().listMessageSummaries(shopId);
       if (!mounted) return;
-      setState(() { _items = items; _loading = false; _offline = false; });
+      setState(() { _items = items; _loading = false; _offline = false; _error = null; });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        // 401/403 ليست انقطاع إنترنت: الخادم رد فعلًا. لا نعرض رسالة
+        // «غير متصل» كاذبة بينما الـ API يعمل، بل خطأ الجلسة نفسه.
+        _offline = e.isNetworkError || (e.statusCode ?? 0) >= 500;
+        _error = _offline ? null : e.message;
+      });
     } catch (_) {
-      if (mounted) setState(() { _loading = false; _offline = true; });
+      if (mounted) setState(() { _loading = false; _offline = true; _error = null; });
     }
   }
 
@@ -82,7 +93,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
         : _items.isEmpty
             ? (_offline
                 ? OfflineEmptyState(onRetry: _load)
-                : const EmptyState(icon: Icons.forum_outlined, message: 'لا توجد رسائل بعد.'))
+                : _error != null
+                    ? ErrorState(message: _error!, onRetry: _load)
+                    : const EmptyState(icon: Icons.forum_outlined, message: 'لا توجد رسائل بعد.'))
             : Column(children: [
                 if (_offline)
                   const Padding(

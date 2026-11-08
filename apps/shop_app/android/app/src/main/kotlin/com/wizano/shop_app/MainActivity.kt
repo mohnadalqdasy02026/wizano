@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognitionListener
@@ -109,8 +110,7 @@ class MainActivity : FlutterActivity() {
                     sendSpeechEvent("error", message = message)
                 }
             })
-            val intent = RecognizerIntent().apply {
-                action = RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, locale)

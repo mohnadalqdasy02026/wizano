@@ -228,4 +228,23 @@ abstract class LocalStore {
 
   /// يقرأ نسخة المحلات المحفوظة.
   Future<List<Shop>> listShops();
+
+  // ---------------------------------------------------------------------------
+  // نسخة القوائم البعيدة (المشتريات والمدفوعات) للقراءة دون اتصال
+  // ---------------------------------------------------------------------------
+
+  /// يحفظ آخر نسخة من قائمة بعيدة (مشتريات/مدفوعات) لمحل.
+  ///
+  /// [kind] نوع القائمة: `purchases` أو `payments`.
+  Future<void> saveRemoteList(
+    String shopId,
+    String kind,
+    List<Map<String, dynamic>> items,
+  );
+
+  /// يقرأ آخر نسخة محفوظة من قائمة بعيدة لمحل.
+  Future<List<Map<String, dynamic>>> readRemoteList(
+    String shopId,
+    String kind,
+  );
 }

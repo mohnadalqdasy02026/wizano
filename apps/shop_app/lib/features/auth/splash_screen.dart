@@ -3,11 +3,12 @@ import 'package:provider/provider.dart';
 
 import '../../app/widgets.dart';
 import '../auth/auth_controller.dart';
-import '../shop/shop_controller.dart';
 
 /// S01 — شاشة البداية: تحميل + فحص الجلسة والاتصال.
 ///
-/// لا توجّه بنفسها؛ الجذر ([AppRoot]) يراقب [AuthController] ويبدّل الشاشة.
+/// لا توجّه بنفسها؛ الجذر ([AppRoot]) يراقب [AuthController] ويبدّل الشاشة،
+/// وهو المسؤول عن تحميل المحلات بعد معرفة الجلسة (بما في ذلك المحل النشط
+/// المحفوظ) — تحميلها هنا أيضًا كان يسبّب سباقًا يعيد شاشة «إعداد المحل».
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -24,16 +25,8 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _bootstrap() async {
     final auth = context.read<AuthController>();
+    if (auth.status != AuthStatus.unknown) return;
     await auth.bootstrap();
-    if (!mounted || !auth.isAuthenticated) return;
-
-    final shops = context.read<ShopController>();
-    await shops.load();
-    if (!mounted) return;
-    final active = shops.active;
-    if (active != null) {
-      await auth.setActiveShopId(active.id);
-    }
   }
 
   @override

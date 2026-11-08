@@ -49,17 +49,28 @@ class PurchaseController extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
+      // اعرض النسخة المحفوظة فورًا (لا ننتظر الشبكة): آخر نسخة معروفة من
+      // الخادم + العمليات المحلية غير المرسلة. هذا ما يراه المستخدم دون
+      // اتصال أو أثناء استيقاظ الخادم.
+      await _showCached(shopId, customerId: customerId);
+      notifyListeners();
+
       // محاولة إفراغ الطابور المحلي أولًا (ترفع وسم «غير متزامن» عند النجاح).
       await _repository.syncPending(shopId);
       final remote = await _repository.listRemote(shopId, customerId: customerId);
       final local = await _repository.listLocal(shopId, customerId: customerId);
-      _purchases = [...local, ...remote];
+      _purchases = [...local, ...remote.items];
       _pendingCount = await _repository.pendingCount(shopId);
-      _fromServer = true;
+      _fromServer = !remote.fromCache;
+      _error = null;
     } catch (_) {
-      // دون اتصال: نعرض النسخة المحلية فقط (الأرقام ناقصة).
+      // دون اتصال: نُبقي النسخة المعروضة، ونضيف العمليات المحلية فقط إن
+      // لم تكن ظاهرة بالفعل.
       try {
-        _purchases = await _repository.listLocal(shopId, customerId: customerId);
+        final local = await _repository.listLocal(shopId, customerId: customerId);
+        if (local.isNotEmpty) {
+          _purchases = [...local, ..._purchases.where((p) => !local.any((l) => l.id == p.id))];
+        }
         _pendingCount = await _repository.pendingCount(shopId);
         _error = null;
         _fromServer = false;
@@ -72,6 +83,18 @@ class PurchaseController extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  /// يعرض الكاش المحلي فورًا (نسخة الخادم + العمليات غير المرسلة).
+  Future<void> _showCached(String shopId, {String? customerId}) async {
+    final cached = await _repository.cachedPurchases(
+      shopId,
+      customerId: customerId,
+    );
+    final local = await _repository.listLocal(shopId, customerId: customerId);
+    if (cached.isEmpty && local.isEmpty) return;
+    _purchases = [...local, ...cached];
+    _fromServer = false;
   }
 
   /// تسجيل عملية شراء — تُحفظ محليًا عند انقطاع الشبكة.

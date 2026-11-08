@@ -197,8 +197,18 @@ class SessionGate extends StatelessWidget {
   Future<String?> _restoreSession() async {
     final access = await _storage.read(key: 'wizano.customer.access');
     final refresh = await _storage.read(key: 'wizano.customer.refresh');
-    if (access == null) return null;
-    if (refresh == null || !_apiConfigured) return access;
+    if (access == null && refresh == null) return null;
+    // لا نوقف شاشة العميل بانتظار Render. افتح آخر جلسة فورًا، ثم جدّدها
+    // بالخلفية؛ هذا يسمح بعرض الكاش حتى أثناء توقف الخادم أو انقطاع النت.
+    if (access != null) {
+      if (refresh != null && _apiConfigured) unawaited(_refreshInBackground(refresh));
+      return access;
+    }
+    if (refresh == null || !_apiConfigured) return null;
+    return _refreshInBackground(refresh);
+  }
+
+  Future<String?> _refreshInBackground(String refresh) async {
     try {
       final response = await http
           .post(
@@ -207,18 +217,18 @@ class SessionGate extends StatelessWidget {
             body: jsonEncode({'refreshToken': refresh}),
           )
           .timeout(const Duration(seconds: 30));
-      if (response.statusCode != 200) return access;
+      if (response.statusCode != 200) return await _storage.read(key: 'wizano.customer.access');
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       final tokens = payload['data']?['tokens'] as Map<String, dynamic>?;
       final newAccess = tokens?['accessToken'] as String?;
       final newRefresh = tokens?['refreshToken'] as String?;
-      if (newAccess == null || newRefresh == null) return access;
+      if (newAccess == null || newRefresh == null) return await _storage.read(key: 'wizano.customer.access');
       await _storage.write(key: 'wizano.customer.access', value: newAccess);
       await _storage.write(key: 'wizano.customer.refresh', value: newRefresh);
       return newAccess;
     } catch (_) {
-      // دون اتصال: نستخدم آخر رمز ونعرض البيانات المحفوظة محليًا.
-      return access;
+      // دون اتصال: لا نمسح الرمز ولا نخرج المستخدم.
+      return await _storage.read(key: 'wizano.customer.access');
     }
   }
 

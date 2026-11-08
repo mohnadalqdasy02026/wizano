@@ -6,6 +6,8 @@ import 'package:shop_app/core/token_store.dart';
 import 'package:shop_app/data/remote/api_client.dart';
 import 'package:shop_app/main.dart';
 
+import 'support/in_memory_local_store.dart';
+
 ApiClient _client({
   required Future<http.Response> Function(http.Request) handler,
   TokenStore? store,
@@ -20,7 +22,11 @@ void main() {
   testWidgets('S01 يُعرض أثناء فحص الجلسة غير المعروفة', (tester) async {
     final store = InMemoryTokenStore();
     final api = _client(handler: (r) async => http.Response('{}', 401));
-    await tester.pumpWidget(WizanoShopApp(apiClient: api, tokenStore: store));
+    await tester.pumpWidget(WizanoShopApp(
+      apiClient: api,
+      tokenStore: store,
+      localStore: InMemoryLocalStore(),
+    ));
 
     expect(find.text('WIZANO | وزانو'), findsWidgets);
     expect(find.text('جارٍ التهيئة...'), findsOneWidget);
@@ -31,11 +37,15 @@ void main() {
   testWidgets('S02 يُعرض عند غياب الجلسة (بلا رمز)', (tester) async {
     final store = InMemoryTokenStore();
     final api = _client(handler: (r) async => http.Response('{}', 401));
-    await tester.pumpWidget(WizanoShopApp(apiClient: api, tokenStore: store));
+    await tester.pumpWidget(WizanoShopApp(
+      apiClient: api,
+      tokenStore: store,
+      localStore: InMemoryLocalStore(),
+    ));
     await tester.pumpAndSettle();
 
-    expect(find.text('تسجيل الدخول'), findsWidgets);
-    expect(find.widgetWithText(ElevatedButton, 'دخول'), findsOneWidget);
+    expect(find.text('مرحبًا بعودتك'), findsOneWidget);
+    expect(find.text('دخول إلى لوحة التحكم'), findsOneWidget);
   });
 
   testWidgets('S02 يعرض رسالة خطأ عربية عند فشل الدخول', (tester) async {
@@ -51,14 +61,18 @@ void main() {
       return http.Response('{}', 401);
     });
 
-    await tester.pumpWidget(WizanoShopApp(apiClient: api, tokenStore: store));
+    await tester.pumpWidget(WizanoShopApp(
+      apiClient: api,
+      tokenStore: store,
+      localStore: InMemoryLocalStore(),
+    ));
     await tester.pumpAndSettle();
 
     await tester.enterText(
         find.widgetWithText(TextFormField, 'البريد الإلكتروني'), 'a@b.com');
     await tester.enterText(
         find.widgetWithText(TextFormField, 'كلمة المرور'), 'wrongpass');
-    await tester.tap(find.widgetWithText(ElevatedButton, 'دخول'));
+    await tester.tap(find.text('دخول إلى لوحة التحكم'));
     await tester.pumpAndSettle();
 
     expect(find.text('البريد/الهاتف أو كلمة المرور غير صحيحة.'), findsOneWidget);
@@ -86,14 +100,18 @@ void main() {
       },
     );
 
-    await tester.pumpWidget(WizanoShopApp(apiClient: api, tokenStore: store));
+    await tester.pumpWidget(WizanoShopApp(
+      apiClient: api,
+      tokenStore: store,
+      localStore: InMemoryLocalStore(),
+    ));
     await tester.pumpAndSettle();
 
     await tester.enterText(
         find.widgetWithText(TextFormField, 'البريد الإلكتروني'), 'a@b.com');
     await tester.enterText(
         find.widgetWithText(TextFormField, 'كلمة المرور'), 'secret123');
-    await tester.tap(find.widgetWithText(ElevatedButton, 'دخول'));
+    await tester.tap(find.text('دخول إلى لوحة التحكم'));
     await tester.pumpAndSettle();
 
     expect(find.text('إعداد المحل'), findsWidgets);

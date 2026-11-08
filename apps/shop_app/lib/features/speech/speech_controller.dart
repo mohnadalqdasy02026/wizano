@@ -15,12 +15,21 @@ class SpeechController extends ChangeNotifier {
   final ModelProvider modelManager;
   final SpeechPort speechService;
   final SystemSpeechService systemSpeech;
+
+  /// هل التطبيق يعرف أنه دون اتصال الآن؟
+  ///
+  /// خدمة التعرّف في الهاتف (Google) تحتاج إنترنت؛ عند معرفة الانقطاع نتجاوزها
+  /// ونستخدم النموذج المحلي مباشرة بدل تسجيل صوت سيفشل إرساله لاحقًا.
+  final bool Function()? _isOffline;
+
   SpeechController({
     required this.modelManager,
     required this.speechService,
     SystemSpeechService? systemSpeech,
     Duration? liveInterval,
+    bool Function()? isOffline,
   })  : systemSpeech = systemSpeech ?? SystemSpeechService(),
+        _isOffline = isOffline,
         _liveIntervalValue = liveInterval ?? _liveInterval {
     // فحص النموذج على القرص عند الإقلاع: بدونه يظنّ التطبيق أن النموذج
     // غير محمّل بعد كل إعادة تشغيل، فيطلب تنزيله من جديد.
@@ -60,9 +69,13 @@ class SpeechController extends ChangeNotifier {
   /// لا تعني أن الإنترنت متصل؛ عند فشل الشبكة نرجع للمحرك المحلي.
   Future<bool> canUseHighAccuracyRecognition() => systemSpeech.isAvailable();
 
+  /// فحص النموذج على القرص فقط (عند الإقلاع وقبل التسجيل).
+  ///
+  /// لا يبدأ تنزيلًا: التنزيل الكبير يبدأ بقرار صريح من المستخدم في S14،
+  /// وإلا استهلك شبكة بطيئة عند كل فتح للتطبيق وأعاق طلبات الخادم.
   Future<void> ensureModel() async {
     try {
-      await modelManager.ensureReady();
+      await modelManager.checkReady();
       if (modelManager.info.isReady && !(await speechService.engine.isReady())) {
         await speechService.engine.init(modelDir: modelManager.info.modelDir);
       }
@@ -71,6 +84,19 @@ class SpeechController extends ChangeNotifier {
       // فحص النموذج عند تشغيل التطبيق استباقي فقط. لا نعرض خطأً أحمر
       // للمستخدم قبل أن يضغط زر التسجيل؛ سيظهر الخطأ الواضح عند الطلب فقط.
       // يبقى زر التسجيل قادرًا على إعادة محاولة تهيئة المحرك بنفسه.
+    }
+  }
+
+  /// تنزيل النموذج بطلب صريح من شاشة نموذج الصوت.
+  Future<void> downloadModel({bool force = false}) async {
+    try {
+      await modelManager.ensureReady(force: force);
+      if (modelManager.info.isReady) {
+        await speechService.engine.init(modelDir: modelManager.info.modelDir);
+      }
+    } catch (e) {
+      debugPrint('[WIZANO-STT] downloadModel failed: $e');
+      // الحالة (info.status = error) كافية للعرض؛ لا نترك استثناءً غير معالج.
     }
   }
 
@@ -123,7 +149,9 @@ class SpeechController extends ChangeNotifier {
     }
     // محرك Android يستعمل خدمة التعرف المثبّتة في الهاتف عند وجود الإنترنت.
     // لا نستخدم أي تصحيح أو قاموس بعد النتيجة؛ النص يبقى كما أعادته الخدمة.
-    if (await systemSpeech.isAvailable()) {
+    // وعند معرفة انقطاع الاتصال نتجاوزها إلى النموذج المحلي مباشرة.
+    final knownOffline = _isOffline?.call() ?? false;
+    if (!knownOffline && await systemSpeech.isAvailable()) {
       try {
         _usingSystemRecognizer = true;
         _systemResult = Completer<String>();

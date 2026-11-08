@@ -71,6 +71,19 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// انتهت الجلسة على الخادم (رُفض رمز التجديد نهائيًا).
+  ///
+  /// نعيد المستخدم إلى شاشة الدخول بدل إبقائه في «وضع دون اتصال» دائم
+  /// لا يخرج منه إلا بحذف الحساب. لا نمسح قاعدة البيانات المحلية كي لا
+  /// تضيع العمليات غير المزامنة، وتُرسل بعد تسجيل الدخول من جديد.
+  void handleSessionExpired() {
+    if (_status == AuthStatus.unauthenticated) return;
+    _user = null;
+    _status = AuthStatus.unauthenticated;
+    _busy = false;
+    notifyListeners();
+  }
+
   Future<void> _refreshUserInBackground() async {
     try {
       final user = await _repository.currentUser();

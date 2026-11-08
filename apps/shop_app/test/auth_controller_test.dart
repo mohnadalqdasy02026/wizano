@@ -44,6 +44,9 @@ class _FakeAuthRepository implements AuthRepository {
   Future<User?> cachedUser() async => cached;
 
   @override
+  Future<void> deleteAccount(String password) async {}
+
+  @override
   Future<String?> readActiveShopId() async => null;
 
   @override
@@ -112,6 +115,29 @@ void main() {
 
       expect(controller.status, AuthStatus.authenticated);
       expect(controller.user, isNull);
+    });
+
+    test('انتهاء الجلسة يعيد للدخول دون مسح البيانات المحلية', () async {
+      var cleared = false;
+      final repository = _FakeAuthRepository()
+        ..cached = const User(
+          id: 'u1',
+          displayName: 'مالك',
+          email: 'a@b.com',
+        );
+      final controller = AuthController(
+        repository: repository,
+        onLogout: () async => cleared = true,
+      );
+
+      await controller.bootstrap();
+      expect(controller.status, AuthStatus.authenticated);
+
+      controller.handleSessionExpired();
+
+      expect(controller.status, AuthStatus.unauthenticated);
+      expect(controller.user, isNull);
+      expect(cleared, isFalse);
     });
   });
 }

@@ -128,12 +128,15 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
       return;
     }
 
-    if (!speech.modelManager.info.isReady) {
+    // خدمة الهاتف عند الاتصال أدق لأسماء المنتجات العربية؛ لا تشترط تنزيل
+    // النموذج المحلي. المحرك المحلي يبقى هو البديل عند غياب الخدمة.
+    final highAccuracyAvailable = await speech.canUseHighAccuracyRecognition();
+    if (!highAccuracyAvailable && !speech.modelManager.info.isReady) {
       // قد يكون الفحص الأول لم يكتمل بعد (فحص القرص غير متزامن).
       await speech.ensureModel();
       if (!mounted) return;
     }
-    if (!speech.modelManager.info.isReady) {
+    if (!highAccuracyAvailable && !speech.modelManager.info.isReady) {
       if (!mounted) return;
       final go = await showDialog<bool>(
         context: context,

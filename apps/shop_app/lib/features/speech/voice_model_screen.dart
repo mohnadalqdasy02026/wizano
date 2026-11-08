@@ -63,7 +63,7 @@ class _VoiceModelScreenState extends State<VoiceModelScreen> {
                       ),
                       SizedBox(height: 8),
                       Text(
-                        'عند الاتصال يستخدم زر الصوت خدمة الهاتف عالية الدقة لأسماء المنتجات العربية. عند انقطاع الإنترنت، يستخدم وزانو نموذج Whisper المحلي الأقوى كبديل؛ راجع النص دائمًا قبل الحفظ.',
+                        'عند الاتصال يستخدم زر الصوت خدمة الهاتف عالية الدقة لأسماء المنتجات العربية. عند انقطاع الإنترنت، يستخدم وزانو نموذجًا عربيًا محليًا احتياطيًا (ويُستخدم أي نموذج عربي منزَّل مسبقًا تلقائيًا)؛ راجع النص دائمًا قبل الحفظ.',
                         style: TextStyle(color: WizanoColors.textMuted),
                       ),
                     ],
@@ -98,11 +98,11 @@ class _VoiceModelScreenState extends State<VoiceModelScreen> {
                 ElevatedButton(
                   onPressed: info.status == ModelStatus.downloading
                       ? null
-                      : () => controller.ensureModel(),
+                      : () => controller.downloadModel(),
                   child: Text(
                     info.status == ModelStatus.downloading
                         ? 'جارٍ التنزيل...'
-                        : 'تنزيل نموذج Whisper المحلي (~165 ميجابايت)',
+                        : 'تنزيل النموذج العربي المحلي (~165 ميجابايت)',
                   ),
                 ),
               const SizedBox(height: 12),

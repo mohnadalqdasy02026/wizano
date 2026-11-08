@@ -59,7 +59,7 @@ class CustomerController extends ChangeNotifier {
       }
     } on ApiException catch (e) {
       _error = e.message;
-      _customers = const [];
+      // احتفظ بما كان ظاهرًا؛ فشل الشبكة لا يعني أن العملاء حُذفوا.
     } catch (_) {
       _error = 'تعذر تحميل قائمة العملاء.';
     } finally {

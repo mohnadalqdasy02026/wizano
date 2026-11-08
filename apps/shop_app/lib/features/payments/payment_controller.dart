@@ -42,15 +42,26 @@ class PaymentController extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
+      // اعرض النسخة المحفوظة فورًا قبل انتظار الشبكة.
+      await _showCached(shopId, customerId: customerId);
+      notifyListeners();
+
       // محاولة إفراغ الطابور المحلي أولًا (ترفع وسم «غير متزامن» عند النجاح).
       await _repository.syncPending(shopId);
-      final remote = await _repository.listRemotePayments(shopId, customerId: customerId);
-      final local = await _repository.listLocalPayments(shopId, customerId: customerId);
-      _payments = [...local, ...remote];
+      final remote =
+          await _repository.listRemotePayments(shopId, customerId: customerId);
+      final local =
+          await _repository.listLocalPayments(shopId, customerId: customerId);
+      _payments = [...local, ...remote.items];
       _pendingCount = await _repository.pendingCount(shopId);
+      _error = null;
     } catch (_) {
       try {
-        _payments = await _repository.listLocalPayments(shopId, customerId: customerId);
+        final local =
+            await _repository.listLocalPayments(shopId, customerId: customerId);
+        if (local.isNotEmpty) {
+          _payments = [...local, ..._payments.where((p) => !local.any((l) => l.id == p.id))];
+        }
         _pendingCount = await _repository.pendingCount(shopId);
         _error = null;
       } catch (_) {
@@ -61,6 +72,20 @@ class PaymentController extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  /// يعرض الكاش المحلي فورًا (نسخة الخادم + العمليات غير المرسلة).
+  Future<void> _showCached(String shopId, {String? customerId}) async {
+    final cached = await _repository.cachedPayments(
+      shopId,
+      customerId: customerId,
+    );
+    final local = await _repository.listLocalPayments(
+      shopId,
+      customerId: customerId,
+    );
+    if (cached.isEmpty && local.isEmpty) return;
+    _payments = [...local, ...cached];
   }
 
   /// تسجيل دفعة — تُحفظ محليًا عند انقطاع الشبكة.

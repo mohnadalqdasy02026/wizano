@@ -9,6 +9,7 @@ class InMemoryLocalStore implements LocalStore {
   final List<SyncAttempt> _attempts = [];
   final List<_CachedCustomer> _customers = [];
   final List<Shop> _shops = [];
+  final Map<String, List<Map<String, dynamic>>> _remoteCache = {};
 
   List<QueuedOperation> get operations => List.unmodifiable(_operations);
   List<Map<String, dynamic>> get cache => List.unmodifiable(_cache);
@@ -196,6 +197,26 @@ class InMemoryLocalStore implements LocalStore {
 
   @override
   Future<List<Shop>> listShops() async => List.unmodifiable(_shops);
+
+  @override
+  Future<void> saveRemoteList(
+    String shopId,
+    String kind,
+    List<Map<String, dynamic>> items,
+  ) async {
+    _remoteCache['$shopId::$kind'] =
+        items.map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> readRemoteList(
+    String shopId,
+    String kind,
+  ) async {
+    final rows = _remoteCache['$shopId::$kind'];
+    if (rows == null) return const [];
+    return rows.map((row) => Map<String, dynamic>.from(row)).toList();
+  }
 }
 
 class _CachedCustomer {

@@ -27,7 +27,8 @@ class SystemSpeechService {
   Future<bool> isAvailable() async {
     try {
       return await _methods.invokeMethod<bool>('isAvailable') ?? false;
-    } on PlatformException {
+    } catch (_) {
+      // غياب plugin أو binding (بيئة اختبار) يعني ببساطة: غير متاحة.
       return false;
     }
   }

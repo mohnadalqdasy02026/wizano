@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -11,13 +12,42 @@ import 'wav_reader.dart';
 /// تنفيذ محرّك sherpa-onnx المحلي.
 class SherpaSpeechEngine implements SpeechEngine {
   sherpa_onnx.OfflineRecognizer? _recognizer;
+  String _engineName = 'sherpa-onnx-local-ar';
+
   @override
-  String get engineName => 'sherpa-onnx-whisper-base-ar';
+  String get engineName => _engineName;
 
   @override
   Future<void> init({required String modelDir}) async {
     sherpa_onnx.initBindings();
-    _recognizer = sherpa_onnx.OfflineRecognizer(_config(modelDir));
+    final whisperEncoder = File('$modelDir/base-encoder.int8.onnx');
+    final legacyEncoder = File('$modelDir/encoder_model.ort');
+    if (await whisperEncoder.exists()) {
+      _engineName = 'sherpa-onnx-whisper-base-ar';
+      _recognizer = sherpa_onnx.OfflineRecognizer(_whisperConfig(modelDir));
+    } else if (await legacyEncoder.exists()) {
+      _engineName = 'sherpa-onnx-moonshine-base-ar';
+      _recognizer = sherpa_onnx.OfflineRecognizer(_moonshineConfig(modelDir));
+    } else {
+      throw Exception('ملفات النموذج غير موجودة في $modelDir');
+    }
+  }
+
+  /// النموذج العربي الأقدم (Moonshine) — يُستخدم إن كان منزَّلًا مسبقًا.
+  sherpa_onnx.OfflineRecognizerConfig _moonshineConfig(String modelDir) {
+    return sherpa_onnx.OfflineRecognizerConfig(
+      model: sherpa_onnx.OfflineModelConfig(
+        moonshine: sherpa_onnx.OfflineMoonshineModelConfig(
+          encoder: '$modelDir/encoder_model.ort',
+          mergedDecoder: '$modelDir/decoder_model_merged.ort',
+        ),
+        tokens: '$modelDir/tokens.txt',
+        modelType: 'moonshine',
+        debug: false,
+        numThreads: 2,
+        provider: 'cpu',
+      ),
+    );
   }
 
   /// إعدادات المحرّك.
@@ -26,7 +56,7 @@ class SherpaSpeechEngine implements SpeechEngine {
   /// مستوى البايت، وت passing كلمات كاملة يجعل إنشاء المحرّك يفشل بالكامل
   /// ("Failed to create offline recognizer") فيتوقف التعرّف كليًّا.
   /// لا نمرر كلمات توجيه أو تصحيحًا قسريًا حتى لا تتغير تفاصيل البيع المنطوقة.
-  sherpa_onnx.OfflineRecognizerConfig _config(String modelDir) {
+  sherpa_onnx.OfflineRecognizerConfig _whisperConfig(String modelDir) {
     return sherpa_onnx.OfflineRecognizerConfig(
       model: sherpa_onnx.OfflineModelConfig(
         whisper: sherpa_onnx.OfflineWhisperModelConfig(

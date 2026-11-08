@@ -7,6 +7,7 @@ import '../shop/shop_controller.dart';
 import '../speech/speech_controller.dart';
 import '../speech/speech_engine.dart';
 import '../speech/voice_model_screen.dart';
+import '../../domain/entities/models.dart';
 import 'how_to_use_screen.dart';
 
 /// S28 — الإعدادات: الحساب، المحل، نموذج الصوت، الخروج.
@@ -39,6 +40,59 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تسجيل الخروج'),
+        content: const Text('هل تريد تسجيل الخروج من حسابك؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('خروج'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      await context.read<AuthController>().logout();
+    }
+  }
+
+  Future<void> _pickShop(BuildContext context, List<Shop> shops) async {
+    final activeId = context.read<ShopController>().active?.id;
+    final selected = await showDialog<Shop>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('اختر المحل'),
+        children: [
+          for (final shop in shops)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, shop),
+              child: Row(
+                children: [
+                  Icon(
+                    shop.id == activeId
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(shop.name)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (selected == null || !context.mounted) return;
+    await context.read<ShopController>().select(selected);
+  }
+
   String _modelSubtitle(BuildContext context) {
     final status = context.watch<SpeechController>().modelManager.info.status;
     return switch (status) {
@@ -52,7 +106,9 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final shop = context.watch<ShopController>().active;
+    final shopController = context.watch<ShopController>();
+    final shop = shopController.active;
+    final shops = shopController.shops;
 
     return Scaffold(
       appBar: AppBar(title: const Text('الإعدادات')),
@@ -84,6 +140,14 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('المنطقة الزمنية'),
             subtitle: Text(shop?.timezone ?? '—'),
           ),
+          if (shops.length > 1)
+            ListTile(
+              leading: const Icon(Icons.swap_horiz),
+              title: const Text('تبديل المحل'),
+              subtitle: Text(shop?.name ?? '—'),
+              trailing: const Icon(Icons.chevron_left),
+              onTap: () => _pickShop(context, shops),
+            ),
           const Divider(),
           const _SectionHeader('أخرى'),
           ListTile(
@@ -117,7 +181,7 @@ class SettingsScreen extends StatelessWidget {
               'تسجيل الخروج',
               style: TextStyle(color: Color(0xFFDC2626)),
             ),
-            onTap: () => context.read<AuthController>().logout(),
+            onTap: () => _confirmLogout(context),
           ),
           const Divider(),
           ListTile(
