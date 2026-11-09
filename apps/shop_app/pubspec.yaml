@@ -1,7 +1,7 @@
-name: shop_app
+﻿name: shop_app
 description: "WIZANO | وزانو — تطبيق صاحب المحل لإدارة الديون والمشتريات والمدفوعات"
 publish_to: 'none'
-version: 0.2.8+20
+version: 1.0.0+100
 
 environment:
   sdk: ^3.9.2
@@ -47,3 +47,4 @@ flutter:
   assets:
     - assets/images/
     - assets/fonts/
+
