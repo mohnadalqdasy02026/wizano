@@ -141,6 +141,18 @@ describe("وحدة المحلات", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it("يقبل اسم محافظة عربي في المنطقة الزمنية", async () => {
+    const token = await registerAndLogin(OWNER_EMAIL);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/shops",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "محل صنعاء", timezone: "صنعاء" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().data.timezone).toBe("صنعاء");
+  });
+
   it("يعيد محلات المستخدم مع دوره فيها", async () => {
     const token = await registerAndLogin(OWNER_EMAIL);
     const res = await app.inject({

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../app/widgets.dart';
 import '../auth/auth_controller.dart';
 import 'shop_controller.dart';
+import 'yemen_timezones.dart';
 
 /// S04 — إعداد ملف المحل: الاسم، العملة (افتراضيًا YER)، المنطقة الزمنية، تاريخ الافتتاح.
 class ShopSetupScreen extends StatefulWidget {
@@ -17,12 +18,11 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
   String _currency = 'YER';
-  String _timezone = 'Asia/Aden';
+  String _timezone = defaultTimezone;
   DateTime? _openingDate;
   String? _error;
 
   static const _currencies = ['YER', 'SAR', 'USD', 'AED'];
-  static const _timezones = ['Asia/Aden', 'Asia/Riyadh', 'Asia/Dubai', 'UTC'];
 
   @override
   void dispose() {
@@ -114,18 +114,23 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
                   initialValue: _timezone,
+                  isExpanded: true,
                   decoration: InputDecoration(
-                    labelText: 'المنطقة الزمنية',
+                    labelText: 'المحافظة / المنطقة الزمنية',
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  items: _timezones
-                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                  items: timezoneOptions
+                      .map((t) => DropdownMenuItem(
+                            value: t.value,
+                            child: Text(t.label),
+                          ))
                       .toList(),
-                  onChanged: (v) => setState(() => _timezone = v ?? 'Asia/Aden'),
+                  onChanged: (v) =>
+                      setState(() => _timezone = v ?? defaultTimezone),
                 ),
                 const SizedBox(height: 14),
                 InkWell(

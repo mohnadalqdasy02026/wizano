@@ -136,6 +136,11 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
             ),
             const SizedBox(height: 8),
             Text(
+              'الرمز صالح لمدة 5 دقائق فقط.',
+              style: const TextStyle(fontSize: 12, color: WizanoColors.textMuted),
+            ),
+            const SizedBox(height: 4),
+            Text(
               'صالح حتى: ${_formatDate(invite.expiresAt)}',
               style: const TextStyle(fontSize: 12, color: WizanoColors.textMuted),
             ),
@@ -165,7 +170,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
 
   String _formatDate(String iso) {
     try {
-      return DateFormat('yyyy-MM-dd').format(DateTime.parse(iso).toLocal());
+      return DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(iso).toLocal());
     } catch (_) {
       return iso;
     }

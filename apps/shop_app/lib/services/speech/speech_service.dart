@@ -19,18 +19,57 @@ class SherpaSpeechEngine implements SpeechEngine {
 
   @override
   Future<void> init({required String modelDir}) async {
+    debugPrint('[WIZANO-STT] init modelDir=$modelDir');
     sherpa_onnx.initBindings();
-    final whisperEncoder = File('$modelDir/base-encoder.int8.onnx');
-    final legacyEncoder = File('$modelDir/encoder_model.ort');
-    if (await whisperEncoder.exists()) {
+    if (await _allReadable(modelDir, const [
+      'base-encoder.int8.onnx',
+      'base-decoder.int8.onnx',
+      'base-tokens.txt',
+    ])) {
       _engineName = 'sherpa-onnx-whisper-base-ar';
+      debugPrint('[WIZANO-STT] creating whisper recognizer');
       _recognizer = sherpa_onnx.OfflineRecognizer(_whisperConfig(modelDir));
-    } else if (await legacyEncoder.exists()) {
+    } else if (await _allReadable(modelDir, const [
+      'encoder_model.ort',
+      'decoder_model_merged.ort',
+      'tokens.txt',
+    ])) {
       _engineName = 'sherpa-onnx-moonshine-base-ar';
+      debugPrint('[WIZANO-STT] creating moonshine recognizer');
       _recognizer = sherpa_onnx.OfflineRecognizer(_moonshineConfig(modelDir));
     } else {
-      throw Exception('ملفات النموذج غير موجودة في $modelDir');
+      // لا نستدعي sherpa قبل التأكد: تمرير ملف غير قابل للقراءة يُجهض
+      // العملية الأصلية (SIGABRT) ولا يمكن التقاطه من Dart.
+      debugPrint('[WIZANO-STT] model files missing or unreadable in $modelDir');
+      throw Exception('ملفات النموذج غير موجودة أو غير قابلة للقراءة في $modelDir');
     }
+  }
+
+  /// يتأكد أن كل ملفات النموذج المطلوبة موجودة وقابلة للقراءة.
+  static Future<bool> _allReadable(String dir, List<String> files) async {
+    for (final name in files) {
+      final path = '$dir/$name';
+      try {
+        final file = File(path);
+        if (!await file.exists()) {
+          debugPrint('[WIZANO-STT] missing model file: $path');
+          return false;
+        }
+        final raf = await file.open(mode: FileMode.read);
+        try {
+          if (await raf.length() <= 0) {
+            debugPrint('[WIZANO-STT] empty model file: $path');
+            return false;
+          }
+        } finally {
+          await raf.close();
+        }
+      } catch (e) {
+        debugPrint('[WIZANO-STT] unreadable model file: $path ($e)');
+        return false;
+      }
+    }
+    return true;
   }
 
   /// النموذج العربي الأقدم (Moonshine) — يُستخدم إن كان منزَّلًا مسبقًا.

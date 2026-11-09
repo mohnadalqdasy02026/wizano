@@ -213,7 +213,8 @@ export async function createInvitation(
   shopId: string,
   customerId: string,
   createdByUserId: string,
-  ttlDays = 7,
+  // صلاحية الرمز 5 دقائق — نفس مدة أنظمة الدعوات المتعارف عليها.
+  ttlMinutes = 5,
 ): Promise<InvitationView> {
   await requireLinkedCustomer(db, shopId, customerId);
 
@@ -227,7 +228,7 @@ export async function createInvitation(
       .limit(1);
     if (existing.length > 0) continue;
 
-    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
     const inserted = await db
       .insert(invitations)
       .values({ shopId, customerId, code, expiresAt, createdBy: createdByUserId })

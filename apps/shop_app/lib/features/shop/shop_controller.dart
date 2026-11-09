@@ -189,6 +189,40 @@ class ShopController extends ChangeNotifier {
     }
   }
 
+  /// يحدّث بيانات المحل النشط — يعيد null عند النجاح أو رسالة الخطأ.
+  Future<String?> update({
+    String? name,
+    String? currency,
+    String? timezone,
+  }) async {
+    final shop = _active;
+    if (shop == null) return 'لا يوجد محل نشط.';
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      final updated = await _api.updateShop(
+        shop.id,
+        name: name,
+        currency: currency,
+        timezone: timezone,
+      );
+      await _repository.cacheShop(updated);
+      _shops = _shops
+          .map((item) => item.id == updated.id ? updated : item)
+          .toList(growable: false);
+      if (_active?.id == updated.id) _active = updated;
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (_) {
+      return 'تعذر تحديث بيانات المحل.';
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
   /// يبدّل المحل النشط ويحفظ الاختيار على الجهاز فورًا.
   Future<void> select(Shop shop) async {
     _active = shop;

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../auth/auth_controller.dart';
 import '../profile/profile_screen.dart';
 import '../shop/shop_controller.dart';
+import '../shop/yemen_timezones.dart';
 import '../speech/speech_controller.dart';
 import '../speech/speech_engine.dart';
 import '../speech/voice_model_screen.dart';
@@ -60,6 +61,42 @@ class SettingsScreen extends StatelessWidget {
     );
     if (confirmed == true && context.mounted) {
       await context.read<AuthController>().logout();
+    }
+  }
+
+  Future<void> _pickTimezone(BuildContext context, Shop shop) async {
+    if (!shop.isOwner) return;
+    final current = timezoneOptionValue(shop.timezone);
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('المحافظة / المنطقة الزمنية'),
+        children: [
+          for (final option in timezoneOptions)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, option.value),
+              child: Row(
+                children: [
+                  Icon(
+                    option.value == current
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(option.label)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (selected == null || selected == current || !context.mounted) return;
+    final error =
+        await context.read<ShopController>().update(timezone: selected);
+    if (!context.mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
     }
   }
 
@@ -137,8 +174,13 @@ class SettingsScreen extends StatelessWidget {
           ),
           ListTile(
             leading: const Icon(Icons.public),
-            title: const Text('المنطقة الزمنية'),
-            subtitle: Text(shop?.timezone ?? '—'),
+            title: const Text('المحافظة / المنطقة الزمنية'),
+            subtitle: Text(timezoneLabel(shop?.timezone)),
+            trailing:
+                shop?.isOwner == true ? const Icon(Icons.chevron_left) : null,
+            onTap: shop?.isOwner == true
+                ? () => _pickTimezone(context, shop!)
+                : null,
           ),
           if (shops.length > 1)
             ListTile(

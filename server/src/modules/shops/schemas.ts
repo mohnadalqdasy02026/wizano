@@ -9,7 +9,12 @@ const currencySchema = z
   .toUpperCase()
   .regex(/^[A-Z]{3}$/, "رمز العملة يجب أن يكون ثلاثة أحرف (مثال: YER)");
 
-// منطقة زمنية بصيغة IANA (تُتحقق من صحتها فعليًا عبر Intl).
+// المنطقة الزمنية تُقبل بصيغة IANA صالحة (تُتحقق فعليًا عبر Intl) أو باسم
+// محافظة عربي (مثل «صنعاء»). الاسم العربي قيمة عرضية لا تدخل في أي حساب مالي،
+// لكنها الطريقة التي يتعرّف بها صاحب المحل على منطقته في التطبيق.
+// تُرفض أي قيمة إنجليزية غير صالحة مثل «Not/AZone».
+const arabicTimezonePattern = /^[\u0600-\u06FF\s—\-]+$/u;
+
 const timezoneSchema = z
   .string()
   .trim()
@@ -17,6 +22,7 @@ const timezoneSchema = z
   .max(64, "المنطقة الزمنية طويلة جدًا")
   .refine(
     (tz) => {
+      if (arabicTimezonePattern.test(tz)) return true;
       try {
         new Intl.DateTimeFormat("en-US", { timeZone: tz });
         return true;
@@ -24,7 +30,10 @@ const timezoneSchema = z
         return false;
       }
     },
-    { message: "المنطقة الزمنية غير صالحة (مثال: Asia/Aden)" },
+    {
+      message:
+        "المنطقة الزمنية غير صالحة (اسم محافظة عربي أو صيغة IANA مثل Asia/Aden)",
+    },
   );
 
 // تاريخ بصيغة YYYY-MM-DD.

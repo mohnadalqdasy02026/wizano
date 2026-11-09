@@ -76,6 +76,7 @@ class SpeechController extends ChangeNotifier {
   Future<void> ensureModel() async {
     try {
       await modelManager.checkReady();
+      debugPrint('[WIZANO-STT] ensureModel status=${modelManager.info.status} dir=${modelManager.info.modelDir}');
       if (modelManager.info.isReady && !(await speechService.engine.isReady())) {
         await speechService.engine.init(modelDir: modelManager.info.modelDir);
       }

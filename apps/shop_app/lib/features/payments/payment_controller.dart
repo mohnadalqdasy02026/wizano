@@ -16,6 +16,7 @@ class PaymentController extends ChangeNotifier {
 
   List<Payment> _payments = const [];
   bool _loading = false;
+  bool _fromServer = false;
   String? _error;
   String? _shopId;
   int _pendingCount = 0;
@@ -24,6 +25,12 @@ class PaymentController extends ChangeNotifier {
   bool get loading => _loading;
   String? get error => _error;
 
+  /// هل جُلبت القائمة من الخادم (وليس من النسخة المحلية فقط)؟
+  ///
+  /// إجمالي الديون = مشتريات − مدفوعات، فإذا كانت المدفوعات من الكاش فقد
+  /// يكون الرقم ناقصًا. نعرض «—» بدل رقم مضلِّل حتى تتأكد النسخة من الخادم.
+  bool get fromServer => _fromServer;
+
   /// عدد العمليات المحلية غير المرسلة.
   int get pendingCount => _pendingCount;
 
@@ -31,6 +38,7 @@ class PaymentController extends ChangeNotifier {
     if (_shopId == shopId) return;
     _shopId = shopId;
     _payments = const [];
+    _fromServer = false;
     _error = null;
     notifyListeners();
   }
@@ -61,6 +69,10 @@ class PaymentController extends ChangeNotifier {
           await _repository.listLocalPayments(shopId, customerId: customerId);
       _payments = [...local, ...remote.items];
       _pendingCount = await _repository.pendingCount(shopId);
+      // في التحديث الصامت لا نقلب الحالة إلى «غير معروفة» بسبب تعثّر لحظي.
+      if (!silent || !remote.fromCache) {
+        _fromServer = !remote.fromCache;
+      }
       _error = null;
     } catch (_) {
       if (!silent) {
@@ -72,9 +84,11 @@ class PaymentController extends ChangeNotifier {
           }
           _pendingCount = await _repository.pendingCount(shopId);
           _error = null;
+          if (!silent) _fromServer = false;
         } catch (_) {
           _error = 'تعذر تحميل المدفوعات.';
           _payments = const [];
+          if (!silent) _fromServer = false;
         }
       }
     } finally {
@@ -95,6 +109,7 @@ class PaymentController extends ChangeNotifier {
     );
     if (cached.isEmpty && local.isEmpty) return;
     _payments = [...local, ...cached];
+    _fromServer = false;
   }
 
   /// تسجيل دفعة — تُحفظ محليًا عند انقطاع الشبكة.

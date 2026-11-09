@@ -305,7 +305,10 @@ describe("وحدة العملاء", () => {
     const data = invite.json().data;
     expect(data.code).toMatch(/^[A-Z2-9]{8}$/);
     expect(data.status).toBe("pending");
-    expect(new Date(data.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    // صلاحية الرمز 5 دقائق.
+    const ttlMs = new Date(data.expiresAt).getTime() - Date.now();
+    expect(ttlMs).toBeGreaterThan(4 * 60 * 1000);
+    expect(ttlMs).toBeLessThanOrEqual(5 * 60 * 1000 + 5000);
   });
 
   it("يقبل DELETE بترويسة JSON وبلا جسم (حالة تطبيق المالك)", async () => {

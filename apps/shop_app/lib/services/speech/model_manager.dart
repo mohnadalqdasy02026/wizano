@@ -8,6 +8,27 @@ import 'package:path_provider/path_provider.dart';
 import '../../features/speech/speech_engine.dart';
 import 'model_extractor.dart';
 
+/// يتحقق أن الملف موجود **وقابل للقراءة** فعلًا.
+///
+/// وجود الاسم في المجلد لا يعني أن التطبيق يستطيع قراءته: النموذج القديم
+/// كان يُنسخ إلى مساحة مشتركة (`Documents`) بينما التطبيق بلا صلاحية تخزين،
+/// فيمرّر sherpa-onnx المسار إلى فتح أصلي يعيد الوصف `-1` ثم يُجهض العملية
+/// بـ`SIGABRT` بدل رمي استثناء Dart. الفحص هنا يمنع الوصول إلى تلك الحالة.
+Future<bool> _isReadableFile(String path) async {
+  try {
+    final file = File(path);
+    if (!await file.exists()) return false;
+    final raf = await file.open(mode: FileMode.read);
+    try {
+      return await raf.length() > 0;
+    } finally {
+      await raf.close();
+    }
+  } catch (_) {
+    return false;
+  }
+}
+
 Future<Directory> _defaultBaseDir() async {
   // نحاول حفظ النموذج في تخزين عام (يبقى بعد إلغاء التثبيت).
   for (final candidate in const [
@@ -170,9 +191,16 @@ class ModelManager implements ModelProvider {
       _isCompleteWith(dir.path, modelRequiredFiles);
 
   Future<bool> _isCompleteWith(String path, List<String> files) async {
-    if (!await Directory(path).exists()) return false;
+    try {
+      if (!await Directory(path).exists()) return false;
+    } catch (_) {
+      return false;
+    }
     for (final name in files) {
-      if (!await File('$path/$name').exists()) return false;
+      if (!await _isReadableFile('$path/$name')) {
+        debugPrint('[WIZANO-STT] unreadable model file: $path/$name');
+        return false;
+      }
     }
     return true;
   }

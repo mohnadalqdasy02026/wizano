@@ -12,6 +12,7 @@ import '../purchases/purchase_controller.dart';
 import '../purchases/purchase_details_screen.dart';
 import '../payments/payment_details_screen.dart';
 import '../shop/shop_controller.dart';
+import '../shop/yemen_timezones.dart';
 import '../settings/settings_screen.dart';
 import '../sync/sync_controller.dart';
 import '../sync/sync_screen.dart';
@@ -100,20 +101,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final shop = shops.active!;
     final purchaseController = context.watch<PurchaseController>();
     final purchases = purchaseController.purchases;
-    final payments = context.watch<PaymentController>().payments;
+    final paymentController = context.watch<PaymentController>();
+    final payments = paymentController.payments;
     final customers = context.watch<CustomerController>().customers;
 
     // الإجماليات تُحسب من العمليات المعتمدة فقط.
-    final approved = purchases.where((p) => p.syncStatus == SyncStatus.synced);
-    final totalDebt = approved.fold<int>(0, (sum, p) => sum + p.remainingAmount);
-    final todayDebt = approved
+    //
+    // **المدفوعات تخصم من الدين:** `remainingAmount` في عملية الشراء يساوي
+    // الإجمالي ناقص المدفوع *وقت الشراء* فقط، أما الدفعات اللاحقة فسجل مستقل.
+    // لذلك نحسب إجمالي الدين بنفس معادلة كشف الحساب:
+    //   Σ مشتريات نشطة − Σ دفعات معتمدة.
+    final approved = purchases.where(
+      (p) => p.syncStatus == SyncStatus.synced && p.status == 'active',
+    );
+    final approvedPayments =
+        payments.where((p) => p.syncStatus == SyncStatus.synced);
+    final totalPurchases =
+        approved.fold<int>(0, (sum, p) => sum + p.totalAmount);
+    final totalPayments =
+        approvedPayments.fold<int>(0, (sum, p) => sum + p.amount);
+    final totalDebt = totalPurchases - totalPayments;
+    final todayPurchases = approved
         .where((p) => _isToday(p.occurredAt))
-        .fold<int>(0, (sum, p) => sum + p.remainingAmount);
+        .fold<int>(0, (sum, p) => sum + p.totalAmount);
+    final todayPayments = approvedPayments
+        .where((p) => _isToday(p.paidAt))
+        .fold<int>(0, (sum, p) => sum + p.amount);
+    // لا نعرض «مستحقات اليوم» سالبة عند سداد ديون قديمة.
+    final todayDebt =
+        todayPurchases - todayPayments > 0 ? todayPurchases - todayPayments : 0;
     final localCount = purchases.where((p) => p.syncStatus.isPending).length +
         payments.where((p) => p.syncStatus.isPending).length;
 
-    // دون اتصال: القائمة محلية فقط، فالرقم ليس إجمالي الديون الحقيقي.
-    final totalsKnown = purchaseController.fromServer;
+    // دون اتصال: القائمتان محليتان فقط، فالرقم ليس إجمالي الديون الحقيقي.
+    final totalsKnown =
+        purchaseController.fromServer && paymentController.fromServer;
     final debtLabel = totalsKnown ? '$totalDebt' : '—';
     final todayLabel = totalsKnown ? '$todayDebt' : '—';
 
@@ -148,7 +170,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         style: const TextStyle(color: WizanoColors.textMuted),
                       ),
                       Text(
-                        'العملة: ${shop.currency} — ${shop.timezone}',
+                        'العملة: ${shop.currency} — ${timezoneLabel(shop.timezone)}',
                         style: const TextStyle(
                           color: WizanoColors.textMuted,
                           fontSize: 12,

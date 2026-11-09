@@ -25,6 +25,23 @@ const _purchaseJson = '{"id":"p1","shopId":"shop-1","customerId":"c1",'
     '"totalAmount":"10000","paidAmount":"3000","remainingAmount":"7000",'
     '"notes":null,"status":"active","statusReason":null,"balanceAfter":"7000"}';
 
+/// الدفعة التي تُسجَّل تلقائيًا مع الشراء (paidAmount).
+const _initialPaymentJson = '{"id":"pay-1","shopId":"shop-1",'
+    '"customerId":"c1","purchaseId":"p1","amount":"3000",'
+    '"paidAt":"2026-10-20T10:00:00.000Z","shopSeq":"1","notes":null,'
+    '"balanceAfter":"7000"}';
+
+/// دفعة لاحقة منفصلة عن الشراء — يجب أن تخصم من إجمالي الديون.
+const _laterPaymentJson = '{"id":"pay-2","shopId":"shop-1",'
+    '"customerId":"c1","purchaseId":null,"amount":"1000",'
+    '"paidAt":"2026-10-25T09:00:00.000Z","shopSeq":"2","notes":null,'
+    '"balanceAfter":"2400"}';
+
+const _debtPurchaseJson = '{"id":"p2","shopId":"shop-1","customerId":"c1",'
+    '"shopSeq":"2","occurredAt":"2026-10-20T10:00:00.000Z","itemsText":"مواد",'
+    '"totalAmount":"3400","paidAmount":"0","remainingAmount":"3400",'
+    '"notes":null,"status":"active","statusReason":null,"balanceAfter":"3400"}';
+
 const _shopJson = '{"id":"shop-1","name":"محل الاختبار","currency":"YER",'
     '"timezone":"Asia/Aden","openingDate":null,"status":"active","role":"owner"}';
 
@@ -179,6 +196,11 @@ void main() {
           return http.Response('{"data":{"items":[$_purchaseJson]}}', 200,
               headers: {'content-type': 'application/json'});
         }
+        if (r.url.path.endsWith('/payments')) {
+          return http.Response(
+              '{"data":{"items":[$_initialPaymentJson]}}', 200,
+              headers: {'content-type': 'application/json'});
+        }
         if (r.url.path.endsWith('/shops')) {
           return http.Response('{"data":{"items":[$_shopJson]}}', 200,
               headers: {'content-type': 'application/json'});
@@ -233,6 +255,75 @@ void main() {
     expect(find.text('7000'), findsOneWidget);
     expect(find.text('أرز'), findsOneWidget);
     expect(find.textContaining('لم تُحتسب في الإجماليات'), findsNothing);
+  });
+
+  testWidgets('S06 المدفوعات اللاحقة تخصم من إجمالي الديون', (tester) async {
+    final repository = OfflineFirstRepository(
+      api: _api((r) async {
+        if (r.url.path.endsWith('/purchases')) {
+          return http.Response(
+              '{"data":{"items":[$_debtPurchaseJson]}}', 200,
+              headers: {'content-type': 'application/json'});
+        }
+        if (r.url.path.endsWith('/payments')) {
+          return http.Response(
+              '{"data":{"items":[$_laterPaymentJson]}}', 200,
+              headers: {'content-type': 'application/json'});
+        }
+        if (r.url.path.endsWith('/shops')) {
+          return http.Response('{"data":{"items":[$_shopJson]}}', 200,
+              headers: {'content-type': 'application/json'});
+        }
+        throw Exception('network down');
+      }),
+      queue: InMemoryLocalStore(),
+    );
+    final auth = AuthController(repository: _FakeAuthRepository());
+    await auth.bootstrap();
+    final purchases = PurchaseController(repository: repository);
+    final payments = PaymentController(repository: repository);
+    final sync = SyncController(repository: repository);
+
+    purchases.setShop('shop-1');
+    payments.setShop('shop-1');
+    sync.setShop('shop-1');
+    await purchases.load();
+    await payments.load();
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<PurchaseController>.value(value: purchases),
+          ChangeNotifierProvider<PaymentController>.value(value: payments),
+          ChangeNotifierProvider<SyncController>.value(value: sync),
+          ChangeNotifierProvider<AuthController>.value(value: auth),
+          ChangeNotifierProvider<ShopController>(
+            create: (_) => ShopController(
+              api: _api(_shopsOnly),
+              repository: OfflineFirstRepository(
+                api: _api(_shopsOnly),
+                queue: InMemoryLocalStore(),
+              ),
+            ),
+          ),
+          ChangeNotifierProvider<CustomerController>(
+            create: (_) => CustomerController(
+              api: _api(_offline),
+              repository: OfflineFirstRepository(
+                api: _api(_offline),
+                queue: InMemoryLocalStore(),
+              ),
+            ),
+          ),
+        ],
+        child: _app(const DashboardScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // الدين 3400 والدفعة اللاحقة 1000 ⇒ إجمالي الديون 2400 (مطابق لكشف العميل).
+    expect(find.text('2400'), findsOneWidget);
+    expect(find.text('—'), findsNothing);
   });
 
   testWidgets('S06 لا يعرض أرقامًا مضللة دون اتصال', (tester) async {
