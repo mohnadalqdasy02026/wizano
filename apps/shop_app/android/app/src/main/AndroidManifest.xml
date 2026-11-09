@@ -8,7 +8,12 @@
         android:name="${applicationName}"
         android:usesCleartextTraffic="false"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:icon="@drawable/ic_launcher_wizano_shop">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
+        <!-- مستقبل الرد المباشر من الإشعار (زر «رد» مثل واتساب). -->
+        <receiver
+            android:name=".ReplyReceiver"
+            android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

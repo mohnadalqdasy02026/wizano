@@ -45,6 +45,10 @@ class ApiClient {
   final bool _ownsHttpClient;
   final String baseUrl;
 
+  /// رمز الوصول الحالي — تستخدمه خدمة الإشعارات لإعداد الرد المباشر
+  /// (زر «رد» داخل الإشعار) دون كشف مخزن الرموز كاملًا.
+  Future<String?> readAccessToken() => _tokens.readAccessToken();
+
   /// تجديد الرمز الجاري الآن — طلبات 401 المتزامنة تشترك فيه بدل أن
   /// يرسل كل منها رمز التجديد نفسه.
   Future<bool>? _refreshInFlight;

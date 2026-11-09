@@ -16,6 +16,7 @@ import '../features/shop/shop_setup_screen.dart';
 import '../features/sync/sync_controller.dart';
 import '../core/connectivity.dart';
 import '../data/remote/api_client.dart';
+import '../services/notifications/local_notification_service.dart';
 import 'widgets.dart';
 
 /// الجذر: يوجّه تلقائيًا حسب حالة الجلسة والمحل.
@@ -131,6 +132,23 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     });
   }
 
+  /// يُجهّز الرد المباشر من الإشعار: يمرر رمز الوصول ورابط الخادم إلى
+  /// الجهة الأصلية حتى يرسل «رد» دون فتح التطبيق.
+  Future<void> _syncReplySession() async {
+    try {
+      final api = context.read<ApiClient>();
+      final notifications = context.read<LocalNotificationService>();
+      final token = await api.readAccessToken();
+      if (token == null || token.isEmpty) return;
+      await notifications.setReplySession(
+        apiBase: api.baseUrl,
+        accessToken: token,
+      );
+    } catch (_) {
+      // بدون جلسة يبقى زر الرد ظاهرًا، ويتطلب الإرسال فتح التطبيق.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
@@ -153,6 +171,10 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         if (mounted && shops.active != null) {
           await auth.setActiveShopId(shops.active!.id);
         }
+        if (mounted) {
+          // إعداد الرد المباشر من الإشعار بجلسة المستخدم الحالية.
+          unawaited(_syncReplySession());
+        }
       });
     }
     if (!auth.isAuthenticated) {
@@ -171,6 +193,9 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
       final wasAuthenticated = _lastAuthStatus == AuthStatus.authenticated;
       _lastAuthStatus = auth.status;
       if (wasAuthenticated && auth.status == AuthStatus.unauthenticated) {
+        unawaited(
+          context.read<LocalNotificationService>().clearReplySession(),
+        );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           Navigator.of(context).popUntil((route) => route.isFirst);

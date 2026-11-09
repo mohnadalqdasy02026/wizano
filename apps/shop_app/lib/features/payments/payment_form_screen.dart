@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../app/widgets.dart';
 import '../../core/connectivity.dart';
 import '../customers/customer_controller.dart';
+import '../customers/customer_picker.dart';
 import '../purchases/purchase_controller.dart';
 import 'payment_controller.dart';
 import 'payment_details_screen.dart';
@@ -120,24 +121,9 @@ class _PaymentFormScreenState extends State<PaymentFormScreen> {
                   ),
                   const SizedBox(height: 14),
                 ],
-                DropdownButtonFormField<String>(
+                CustomerPickerField(
+                  customers: customers,
                   initialValue: _customerId,
-                  decoration: const InputDecoration(
-                    labelText: 'العميل',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                    ),
-                  ),
-                  items: customers
-                      .map(
-                        (c) => DropdownMenuItem(
-                          value: c.id,
-                          child: Text(c.displayName),
-                        ),
-                      )
-                      .toList(),
                   onChanged: (v) {
                     setState(() {
                       _customerId = v;

@@ -9,6 +9,7 @@ import '../../data/remote/api_client.dart';
 import '../../services/notifications/local_notification_service.dart';
 import '../customers/customers_screen.dart';
 import '../home/dashboard_screen.dart';
+import '../messages/customer_messages_screen.dart';
 import '../messages/messages_screen.dart';
 import '../payments/payments_screen.dart';
 import '../profile/profile_screen.dart';
@@ -29,6 +30,7 @@ class _HomeShellState extends State<HomeShell> {
   int _unreadMessages = 0;
   bool _loadingUnreadMessages = false;
   Timer? _messageBadgePoller;
+  StreamSubscription<NotificationTarget>? _notificationTapSub;
   Map<String, int> _knownUnreadByCustomer = const {};
   bool _receivedFirstMessageSnapshot = false;
 
@@ -45,15 +47,44 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadUnreadMessages());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUnreadMessages();
+      _listenToNotificationTaps();
+    });
     _messageBadgePoller = Timer.periodic(
       const Duration(seconds: 8),
       (_) => _loadUnreadMessages(),
     );
   }
 
+  /// الضغط على إشعار يفتح محادثة العميل صاحب الرسالة مباشرة.
+  void _listenToNotificationTaps() {
+    final service = context.read<LocalNotificationService>();
+    _notificationTapSub = service.onTap.listen(_openConversationFromNotification);
+    // إقلاع بارد من إشعار: الوجهة محفوظة في الجهة الأصلية وتُستهلك مرة واحدة.
+    unawaited(service.consumeTarget().then((target) {
+      if (target != null && mounted) _openConversationFromNotification(target);
+    }));
+  }
+
+  void _openConversationFromNotification(NotificationTarget target) {
+    if (!mounted) return;
+    final shopId = context.read<ShopController>().active?.id;
+    if (shopId == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CustomerMessagesScreen(
+          shopId: shopId,
+          customerId: target.conversationId,
+          customerName: target.senderName,
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    _notificationTapSub?.cancel();
     _messageBadgePoller?.cancel();
     super.dispose();
   }
@@ -83,8 +114,12 @@ class _HomeShellState extends State<HomeShell> {
           final before = _knownUnreadByCustomer[item.customerId] ?? 0;
           if (item.unreadCount > before) {
             await context.read<LocalNotificationService>().showNewMessage(
-              customerName: item.customerName,
+              conversationId: item.customerId,
+              senderName: item.customerName,
+              body: item.lastBody,
               count: item.unreadCount - before,
+              shopId: shopId,
+              at: DateTime.tryParse(item.lastCreatedAt)?.toLocal(),
             );
           }
         }

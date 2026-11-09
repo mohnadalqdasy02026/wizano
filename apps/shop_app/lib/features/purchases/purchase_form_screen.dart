@@ -5,6 +5,7 @@ import '../../app/theme.dart';
 import '../../app/widgets.dart';
 import '../../core/connectivity.dart';
 import '../../features/customers/customer_controller.dart';
+import '../customers/customer_picker.dart';
 import '../speech/speech_controller.dart';
 import '../speech/voice_model_screen.dart';
 import 'purchase_controller.dart';
@@ -299,24 +300,9 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
                   const OfflineNotice(),
                   const SizedBox(height: 14),
                 ],
-                DropdownButtonFormField<String>(
+                CustomerPickerField(
+                  customers: customers,
                   initialValue: _customerId,
-                  decoration: const InputDecoration(
-                    labelText: 'العميل',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                    ),
-                  ),
-                  items: customers
-                      .map(
-                        (c) => DropdownMenuItem(
-                          value: c.id,
-                          child: Text(c.displayName),
-                        ),
-                      )
-                      .toList(),
                   onChanged: (v) => setState(() => _customerId = v),
                   validator: (v) => v == null ? 'اختر العميل' : null,
                 ),

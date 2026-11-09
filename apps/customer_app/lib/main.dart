@@ -350,6 +350,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<dynamic> _shops = const [];
   Timer? _poller;
+  StreamSubscription<CustomerNotificationTarget>? _notificationTapSub;
   bool _offline = false;
   bool _checkingMessageBadges = false;
   bool _receivedFirstMessageSnapshot = false;
@@ -361,12 +362,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _restoreCache();
     _load();
+    _bindNotificationTaps();
+    // إعداد الرد المباشر من الإشعار بجلسة العميل الحالية.
+    unawaited(_customerNotifications.setReplySession(
+      apiBase: _apiBase,
+      accessToken: widget.token,
+    ));
     _poller = Timer.periodic(const Duration(seconds: 8), (_) => _load());
+  }
+
+  /// الضغط على إشعار يفتح محادثة المحل المرسِل مباشرة.
+  void _bindNotificationTaps() {
+    _notificationTapSub =
+        _customerNotifications.onTap.listen(_openShopFromNotification);
+    unawaited(_customerNotifications.consumeTarget().then((target) {
+      if (target != null && mounted) _openShopFromNotification(target);
+    }));
+  }
+
+  void _openShopFromNotification(CustomerNotificationTarget target) {
+    if (!mounted) return;
+    var shopName = target.shopName;
+    for (final raw in _shops) {
+      final shop = raw as Map<String, dynamic>;
+      if (shop['id']?.toString() == target.shopId) {
+        shopName = shop['name']?.toString() ?? shopName;
+        break;
+      }
+    }
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => CustomerMessagesScreen(
+        token: widget.token,
+        shopId: target.shopId,
+        shopName: shopName,
+      ),
+    ));
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _notificationTapSub?.cancel();
     _poller?.cancel();
     super.dispose();
   }
@@ -425,10 +461,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         current[shopId] = count;
         final previous = _unreadByShop[shopId] ?? 0;
         if (_receivedFirstMessageSnapshot && count > previous) {
+          final last = await _lastIncomingMessage(shopId);
           await _customerNotifications.showNewMessage(
             shopId: shopId,
             shopName: shop['name']?.toString() ?? 'المحل',
+            body: last?['body']?.toString(),
             count: count - previous,
+            at: DateTime.tryParse(last?['createdAt']?.toString() ?? '')?.toLocal(),
           );
         }
       }
@@ -440,7 +479,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _checkingMessageBadges = false;
     }
   }
-  Future<void> _logout() async { await _storage.deleteAll(); if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false); }
+
+  /// آخر رسالة واردة من المحل (لعرض نصها في الإشعار). تُطلب فقط عند
+  /// زيادة عدد غير المقروء، فلا تثقل الاستقصاء الدوري.
+  Future<Map<String, dynamic>?> _lastIncomingMessage(String shopId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_apiBase/api/v1/shops/$shopId/my-messages'),
+        headers: {'authorization': 'Bearer ${widget.token}'},
+      ).timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) return null;
+      final payload = jsonDecode(response.body) as Map<String, dynamic>;
+      final items = (payload['data'] as Map<String, dynamic>?)?['items'] as List<dynamic>? ?? const [];
+      if (items.isEmpty) return null;
+      final last = items.last as Map<String, dynamic>;
+      if (last['senderType']?.toString() != 'shop') return null;
+      return last;
+    } catch (_) {
+      return null;
+    }
+  }
+  Future<void> _logout() async { await _storage.deleteAll(); unawaited(_customerNotifications.clearReplySession()); if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false); }
 
   Future<void> _deleteAccount() async {
     final password = TextEditingController();

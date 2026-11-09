@@ -291,8 +291,10 @@ class SqliteLocalStore implements LocalStore {
         whereArgs: [shopId],
       );
       final now = DateTime.now().toIso8601String();
+      // إدراج مجمّع: مع آلاف العملاء يوفّر وقتًا كبيرًا مقارنةً بإدراج صف صف.
+      final batch = txn.batch();
       for (final c in customers) {
-        await txn.insert(LocalDatabase.customersTable, {
+        batch.insert(LocalDatabase.customersTable, {
           'id': c.id,
           'shop_id': shopId,
           'display_name': c.displayName,
@@ -302,6 +304,7 @@ class SqliteLocalStore implements LocalStore {
           'updated_at': now,
         });
       }
+      await batch.commit(noResult: true);
     });
   }
 

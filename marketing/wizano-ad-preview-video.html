@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WIZANO — الإعلان السينمائي</title>
+  <style>
+    :root { --navy:#0b2a4a; --teal:#16a39a; --gold:#d8ad4d; --ink:#eaf4f7; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; background:#020914; color:white; font-family: Tahoma, Arial, sans-serif; }
+    .ad { width:1080px; height:1350px; overflow:hidden; position:relative; background:radial-gradient(circle at 70% 15%,#1a5f85 0,transparent 28%),linear-gradient(145deg,#06111f,#0b2a4a 62%,#06111f); box-shadow:0 28px 80px #000; }
+    .ad:after { content:""; position:absolute; inset:-40%; background:linear-gradient(120deg,transparent 45%,rgba(91,235,229,.12),transparent 55%); animation:glow 9s linear infinite; pointer-events:none; }
+    .brand { position:absolute; top:5%; right:7%; z-index:10; font-weight:900; letter-spacing:1.6px; font-size:28px; text-shadow:0 3px 18px #000; }
+    .brand i { color:var(--teal); font-style:normal; }
+    .scene { position:absolute; inset:0; opacity:0; transform:scale(1.08); animation:scene 38s infinite; display:grid; place-items:center; padding:16% 9% 14%; }
+    .scene:nth-of-type(2) { animation-delay:0s; }
+    .scene:nth-of-type(3){animation-delay:6s}
+    .scene:nth-of-type(4){animation-delay:12s}
+    .scene:nth-of-type(5){animation-delay:19s}
+    .scene:nth-of-type(6){animation-delay:25s}
+    .scene:nth-of-type(7){animation-delay:31s}
+    .copy { position:absolute; z-index:4; inset:auto 9% 10%; text-align:right; text-shadow:0 4px 18px #000,0 0 40px #0009; }
+    .eyebrow { color:#87f5ec; font-size:22px; margin-bottom:9px; font-weight:800; letter-spacing:0.5px; }
+    .copy h1{font-size:66px;line-height:1.22;margin:0;font-weight:900}
+    .copy p{font-size:28px;color:#e6f6fb;margin:12px 0 0;line-height:1.6}
+    .phone { height:78%; aspect-ratio:1080/2340; border:8px solid #0a1017; border-radius:48px; overflow:hidden; background:#111; box-shadow:0 30px 60px #000a,0 0 0 1px #87f5ec55,0 0 80px #16a39a22; position:relative; transform:rotate(-4deg); }
+    .phone img { width:100%; height:100%; object-fit:cover; object-position:top center; }
+    .phone:before{content:"";position:absolute;z-index:2;top:8px;left:50%;transform:translateX(-50%);width:34%;height:14px;background:#07090c;border-radius:0 0 14px 14px}
+    .pair { display:flex; align-items:center; justify-content:center; gap:42px; height:80%; }
+    .pair .phone{height:94%; transform:rotate(-3deg);}
+    .pair .phone:last-child{transform:rotate(7deg) translateY(6%)}
+    .hero .phone { height:70%; transform:rotate(0deg); box-shadow:0 34px 70px #000b,0 0 0 1px #87f5ec66,0 0 100px #16a39a33; }
+    .hero .copy{text-align:center;inset:auto 12% 12%}
+    .cta{display:inline-block;background:linear-gradient(90deg,var(--teal),#1ad1c7);padding:12px 36px;border-radius:30px;color:#fff;font-weight:900;margin-top:18px;font-size:26px;box-shadow:0 16px 40px #16a39a55}
+    .orb{position:absolute;border-radius:50%;filter:blur(3px);background:radial-gradient(circle,#16a39a66 0,transparent 70%);width:52%;aspect-ratio:1;top:16%;left:-20%;animation:float 6s ease-in-out infinite}
+    .orb2{position:absolute;border-radius:50%;filter:blur(4px);background:radial-gradient(circle,#d8ad4d33 0,transparent 70%);width:38%;aspect-ratio:1;bottom:-10%;right:-12%;animation:float 7s ease-in-out infinite reverse}
+    .progress{position:absolute;z-index:10;left:9%;right:9%;bottom:4%;height:4px;background:#ffffff1f;border-radius:12px;overflow:hidden}
+    .progress:after{content:"";display:block;width:100%;height:100%;background:linear-gradient(90deg,var(--teal),#1ad1c7);transform-origin:right;animation:progress 38s linear infinite}
+    @keyframes scene {0%,2.5%{opacity:0;transform:scale(1.09)}8%,14%{opacity:1;transform:scale(1)}16%,100%{opacity:0;transform:scale(.98)}}
+    @keyframes progress{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+    @keyframes glow{to{transform:translate(55%,55%) rotate(18deg)}}
+    @keyframes float{50%{transform:translate(36px,-24px) scale(1.12)}}
+
+    .scene-counter {
+      position: absolute;
+      top: 5%;
+      right: 7%;
+      z-index: 20;
+      color: rgba(255,255,255,0.25);
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      pointer-events: none;
+    }
+    .scene-counter .num { color: #87f5ec; letter-spacing: 1px; }
+    .subtitle {
+      position: absolute;
+      bottom: 14%;
+      left: 8%;
+      right: 8%;
+      z-index: 18;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 12px 16px;
+      color: #87f5ec;
+      font-size: clamp(15px, 2.6vw, 26px);
+      font-weight: 800;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      background: rgba(11,42,74,0.55);
+      backdrop-filter: blur(12px);
+      border-radius: 16px;
+      border: 1px solid rgba(135,245,236,0.12);
+      opacity: 0;
+      transition: opacity 0.6s ease, transform 0.6s ease;
+      transform: translateY(16px);
+      pointer-events: none;
+    }
+    .subtitle.visible { opacity: 1; transform: translateY(0); }
+    .sound-wave {
+      position: absolute;
+      bottom: 7%;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 15;
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 28px;
+      padding: 0 12px;
+      pointer-events: none;
+    }
+    .sound-wave div {
+      flex: 1;
+      background: linear-gradient(to top, var(--teal), var(--teal-bright));
+      border-radius: 2px;
+      animation: soundWave 0.8s ease-in-out infinite alternate;
+      min-width: 3px;
+    }
+    .sound-wave div:nth-child(1) { height: 35%; animation-delay: 0s; }
+    .sound-wave div:nth-child(2) { height: 65%; animation-delay: 0.1s; }
+    .sound-wave div:nth-child(3) { height: 50%; animation-delay: 0.2s; }
+    .sound-wave div:nth-child(4) { height: 85%; animation-delay: 0.3s; }
+    .sound-wave div:nth-child(5) { height: 60%; animation-delay: 0.4s; }
+    .sound-wave div:nth-child(6) { height: 90%; animation-delay: 0.5s; }
+    .sound-wave div:nth-child(7) { height: 45%; animation-delay: 0.6s; }
+    .sound-wave div:nth-child(8) { height: 70%; animation-delay: 0.7s; }
+    @keyframes soundWave {
+      0% { height: 30%; }
+      100% { height: 100%; }
+    }
+    .intro {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 20% 10%;
+      opacity: 1;
+      transition: opacity 1.2s ease-out;
+    }
+    .intro.hidden { opacity: 0; }
+    .intro .logo-icon {
+      font-size: clamp(60px, 12vw, 220px);
+      line-height: 1;
+      margin-bottom: 15px;
+      display: block;
+      filter: drop-shadow(0 8px 30px rgba(22,163,154,0.4));
+      animation: bounceIn 1.8s cubic-bezier(0.68,-0.55,0.27,1.55) forwards;
+    }
+    .intro .brand {
+      font-size: clamp(22px, 4.5vw, 56px);
+      font-weight: 900;
+      letter-spacing: 3px;
+      color: var(--ink);
+      text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      animation: fadeUp 0.8s 0.6s ease-out forwards;
+    }
+    .intro .brand i { color: var(--teal); font-style: normal; }
+    .intro h1 {
+      font-size: clamp(32px, 7vw, 140px);
+      font-weight: 900;
+      line-height: 1.15;
+      letter-spacing: 2px;
+      color: var(--ink);
+      text-shadow: 0 6px 30px rgba(0,0,0,0.6);
+      margin-top: 15px;
+      animation: fadeUp 0.8s 1s ease-out forwards;
+    }
+    .intro h1 span { color: var(--teal-bright); }
+    @keyframes bounceIn {
+      0% { transform: scale(0) rotate(-20deg); opacity: 0; }
+      60% { transform: scale(1.15) rotate(3deg); opacity: 1; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes glow {
+      0%, 100% { transform: translate(0,0) rotate(0deg); }
+      50% { transform: translate(55%,55%) rotate(18deg); }
+    }
+    @keyframes float {
+      0%, 100% { transform: translate(0,0) scale(1); }
+      50% { transform: translate(36px,-24px) scale(1.12); }
+    }
+    .progress-fill {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--teal), var(--teal-bright));
+      border-radius: 12px;
+      width: 0%;
+      transition: width 0.1s linear;
+    }
+  </style>
+</head>
+<body>
+
+    <div class="subtitle" id="subtitle">مقدمة</div>
+    <div class="scene-counter" id="sceneCounter">
+      <span class="num" id="counterNum">01</span> / 07
+    </div>
+    <div class="sound-wave" id="soundWave">
+      <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+    </div>
+    <div class="intro" id="intro">
+      <span class="logo-icon">🎬</span>
+      <div class="brand">WIZANO <i>│ وزانو</i></div>
+      <h1>إدارة محلك<br>أصبحت أوضح <span>🌟</span></h1>
+    </div>
+    <div class="outro" id="outro">
+      <span class="logo-icon">🚀</span>
+      <div class="brand">WIZANO <i>│ وزانو</i></div>
+      <h1>استكشف التطبيق الآن</h1>
+      <span class="cta">تحميل التطبيق مجاناً</span>
+    </div>
+    <div class="progress">
+      <span class="progress-fill" id="progressFill"></span>
+    </div>
+
+  </main>
+</body>
+</html>
+  </main>
+  <main class="ad" aria-label="إعلان وزانو السينمائي">
+    <div class="brand">WIZANO <i>│ وزانو</i></div>
+    <div class="orb"></div>
+    <div class="orb2"></div>
+
+    <section class="scene hero">
+      <div class="phone"><img src="../apps/shop_app/assets/images/shop_login_hero.png" alt="واجهة تطبيق وزانو"></div>
+      <div class="copy">
+        <div class="eyebrow">WIZANO │ وزانو</div>
+        <h1>إدارة محلك<br>أصبحت أوضح وأسهل</h1>
+      </div>
+    </section>
+
+    <section class="scene">
+      <div class="phone"><img src="../app-screenshots/11-customers-list.png" alt="قائمة العملاء"></div>
+      <div class="copy">
+        <div class="eyebrow">إدارة العملاء</div>
+        <h1>كل عميل...<br>وكل حساب في مكانه</h1>
+        <p>تابع أرصدة العملاء بسهولة</p>
+      </div>
+    </section>
+
+    <section class="scene">
+      <div class="phone"><img src="../app-screenshots/20-purchase-form.png" alt="تسجيل المشتريات والمدفوعات"></div>
+      <div class="copy">
+        <div class="eyebrow">العمليات اليومية</div>
+        <h1>سجّل المشتريات<br>والمدفوعات بثقة</h1>
+        <p>سريع، دقيق، ويقلل الأخطاء</p>
+      </div>
+    </section>
+
+    <section class="scene">
+      <div class="phone"><img src="../app-screenshots/29-statement-entries-stage11.png" alt="كشف حساب العميل"></div>
+      <div class="copy">
+        <div class="eyebrow">كشف الحساب</div>
+        <h1>كل التفاصيل<br>في كشف واحد واضح</h1>
+        <p>عمليات، أرصدة، وتواريخ مرتبة</p>
+      </div>
+    </section>
+
+    <section class="scene">
+      <div class="phone"><img src="../app-screenshots/45-phone-voice-text-in-field.png" alt="إدخال صوتي سريع"></div>
+      <div class="copy">
+        <div class="eyebrow">الإدخال الذكي</div>
+        <h1>أسرع في التسجيل<br>بالصوت أو الكتابة</h1>
+        <p>يعمل حتى بدون إنترنت</p>
+      </div>
+    </section>
+
+    <section class="scene">
+      <div class="pair">
+        <div class="phone"><img src="../app-screenshots/16-customer-details.png" alt="واجهة صاحب المحل"></div>
+        <div class="phone"><img src="../apps/customer_app/assets/images/customer_login_hero.png" alt="واجهة تطبيق العميل"></div>
+      </div>
+      <div class="copy">
+        <div class="eyebrow">تكامل كامل</div>
+        <h1>لصاحب المحل والعميل<br>في تطبيق واحد</h1>
+        <p>متابعة، تواصل، وشفافية أكبر</p>
+      </div>
+    </section>
+
+    <section class="scene hero">
+      <div class="phone"><img src="../apps/shop_app/assets/images/app_icon.png" alt="شعار وزانو"></div>
+      <div class="copy">
+        <div class="eyebrow">WIZANO │ وزانو</div>
+        <h1>إدارة أذكى<br>لمحلّك وعملائك</h1>
+        <span class="cta">ابدأ مع وزانو الآن</span>
+      </div>
+    </section>
+
+
+    <div class="progress"></div>
+  </main>
+</body>
+</html>

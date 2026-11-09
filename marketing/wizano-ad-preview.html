@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WIZANO — الإعلان السينمائي</title>
+  <style>
+    :root { --navy:#0b2a4a; --teal:#16a39a; --gold:#d8ad4d; --ink:#eaf4f7; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; background:#020914; color:white; font-family:Tahoma, Arial, sans-serif; }
+    .ad { width:min(90vw,810px); aspect-ratio:3/4; overflow:hidden; position:relative; background:radial-gradient(circle at 70% 15%,#144f70 0,transparent 28%),linear-gradient(145deg,#06111f,#0b2a4a 62%,#06111f); box-shadow:0 28px 80px #000; }
+    .ad:after { content:""; position:absolute; inset:-40%; background:linear-gradient(120deg,transparent 45%,rgba(91,235,229,.12),transparent 55%); animation:glow 7s linear infinite; pointer-events:none; }
+    .brand { position:absolute; top:5%; right:8%; z-index:5; font-weight:900; letter-spacing:1.5px; font-size:clamp(13px,2vw,21px); }
+    .brand i { color:var(--teal); font-style:normal; }
+    .scene { position:absolute; inset:0; opacity:0; transform:scale(1.08); animation:scene 35s infinite; display:grid; place-items:center; padding:15% 8% 12%; }
+    .scene:nth-of-type(2) { animation-delay:0s; }.scene:nth-of-type(3){animation-delay:5s}.scene:nth-of-type(4){animation-delay:10s}.scene:nth-of-type(5){animation-delay:16s}.scene:nth-of-type(6){animation-delay:22s}.scene:nth-of-type(7){animation-delay:28s}
+    .copy { position:absolute; z-index:3; inset:auto 7% 8%; text-align:right; text-shadow:0 4px 16px #000; }
+    .eyebrow { color:#87f5ec; font-size:clamp(11px,1.7vw,17px); margin-bottom:7px; font-weight:bold; }.copy h1{font-size:clamp(25px,4.6vw,55px);line-height:1.25;margin:0}.copy p{font-size:clamp(13px,2vw,22px);color:#e0eff5;margin:8px 0 0;line-height:1.6}
+    .phone { height:75%; aspect-ratio:1080/2340; border:7px solid #0a1017; border-radius:clamp(20px,3.5vw,40px); overflow:hidden; background:#111; box-shadow:0 24px 45px #0009,0 0 0 1px #87f5ec66; position:relative; transform:rotate(-5deg); }.phone img { width:100%; height:100%; object-fit:cover; object-position:top; }.phone:before{content:"";position:absolute;z-index:2;top:7px;left:50%;transform:translateX(-50%);width:32%;height:12px;background:#07090c;border-radius:0 0 12px 12px}
+    .pair { display:flex; align-items:center; justify-content:center; gap:clamp(10px,3vw,35px); height:76%; }.pair .phone{height:92%;}.pair .phone:last-child{transform:rotate(6deg) translateY(5%)}
+    .hero .phone { height:66%; transform:rotate(0deg); }.hero .copy{text-align:center;inset:auto 8% 10%}.cta{display:inline-block;background:var(--teal);padding:8px 20px;border-radius:24px;color:#fff;font-weight:bold;margin-top:13px}
+    .orb{position:absolute;border-radius:50%;filter:blur(2px);background:#16a39a55;width:48%;aspect-ratio:1;top:18%;left:-18%;animation:float 5s ease-in-out infinite}.progress{position:absolute;z-index:7;left:7%;right:7%;bottom:3%;height:3px;background:#ffffff26;border-radius:9px;overflow:hidden}.progress:after{content:"";display:block;width:100%;height:100%;background:var(--teal);transform-origin:right;animation:progress 35s linear infinite}
+    @keyframes scene {0%,3%{opacity:0;transform:scale(1.08)}7%,12%{opacity:1;transform:scale(1)}14.28%,100%{opacity:0;transform:scale(.97)}}@keyframes progress{from{transform:scaleX(0)}to{transform:scaleX(1)}}@keyframes glow{to{transform:translate(55%,55%) rotate(15deg)}}@keyframes float{50%{transform:translate(30px,-20px) scale(1.1)}}
+  </style>
+</head>
+<body>
+  <main class="ad" aria-label="إعلان وزانو السينمائي">
+    <div class="brand">WIZANO <i>│ وزانو</i></div><div class="orb"></div>
+    <section class="scene hero"><div class="phone"><img src="../apps/shop_app/assets/images/shop_login_hero.png" alt="وزانو"></div><div class="copy"><div class="eyebrow">WIZANO │ وزانو</div><h1>إدارة محلك<br>أصبحت أوضح</h1></div></section>
+    <section class="scene"><div class="phone"><img src="../app-screenshots/11-customers-list.png" alt="قائمة العملاء"></div><div class="copy"><div class="eyebrow">العملاء</div><h1>كل عميل...<br>وكل حساب في مكانه</h1></div></section>
+    <section class="scene"><div class="phone"><img src="../app-screenshots/20-purchase-form.png" alt="تسجيل مشتريات"></div><div class="copy"><div class="eyebrow">العمليات</div><h1>سجّل المشتريات<br>والمدفوعات بثقة</h1></div></section>
+    <section class="scene"><div class="phone"><img src="../app-screenshots/29-statement-entries-stage11.png" alt="كشف الحساب"></div><div class="copy"><div class="eyebrow">كشف الحساب</div><h1>كل التفاصيل<br>في كشف واحد</h1><p>عمليات، أرصدة، وتوقيت واضح</p></div></section>
+    <section class="scene"><div class="phone"><img src="../app-screenshots/45-phone-voice-text-in-field.png" alt="إدخال صوتي"></div><div class="copy"><div class="eyebrow">إدخال بالصوت</div><h1>أسرع في التسجيل<br>حتى دون إنترنت</h1></div></section>
+    <section class="scene"><div class="pair"><div class="phone"><img src="../app-screenshots/16-customer-details.png" alt="تطبيق المحل"></div><div class="phone"><img src="../apps/customer_app/assets/images/customer_login_hero.png" alt="تطبيق العميل"></div></div><div class="copy"><div class="eyebrow">لصاحب المحل والعميل</div><h1>تواصل أوضح<br>وعمل مستمر</h1></div></section>
+    <section class="scene hero"><div class="phone"><img src="../apps/shop_app/assets/images/app_icon.png" alt="شعار وزانو"></div><div class="copy"><div class="eyebrow">WIZANO │ وزانو</div><h1>إدارة أذكى<br>لمحلّك وعملائك</h1><span class="cta">اكتشف وزانو الآن</span></div></section>
+    <div class="progress"></div>
+  </main>
+</body>
+</html>
